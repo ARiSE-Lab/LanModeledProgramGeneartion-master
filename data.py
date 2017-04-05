@@ -1,0 +1,105 @@
+###############################################################################
+# Author: Md Rizwan Parvez
+# Project: LanModeledProgramGeneration
+# Date Created: 4/1/2017
+# Some codes are from Wasi Ahmad data.py
+# File Description: This script provides a definition of the corpus, each
+# example in the corpus and the dictionary.
+###############################################################################
+from nltk.tokenize import word_tokenize
+import numpy as np
+import json, os
+
+
+# # import util
+
+# #### fix this form util
+# def sepearte_operator(x):
+#     x = x.replace('++', ' ++')
+#     x = x.replace('--', ' --')
+#     return x
+# def tokenize(s):
+#     """Tokenize  string."""
+#     token_list = []
+#     tokens = word_tokenize(s.lower())
+#     token_list.extend([x for x in tokens])
+#     return token_list
+
+
+class Dictionary(object):
+    def __init__(self):
+        self.word2idx = {}
+        self.idx2word = []
+        # Create and store three special tokens
+        self.start_token = '<SOS>'
+        self.end_token = '<EOS>'
+        self.unknown_token = '<UNKNOWN>'
+        self.pad_token = '<PAD>'
+        self.idx2word.append(self.start_token)
+        self.word2idx[self.start_token] = len(self.idx2word) - 1
+        self.idx2word.append(self.end_token)
+        self.word2idx[self.end_token] = len(self.idx2word) - 1
+        self.idx2word.append(self.unknown_token)
+        self.word2idx[self.unknown_token] = len(self.idx2word) - 1
+        self.idx2word.append(self.pad_token)
+        self.word2idx[self.pad_token] = len(self.idx2word) - 1
+
+    def add_word(self, word):
+        word = word.lower()
+        if word not in self.word2idx:
+            self.idx2word.append(word)
+            self.word2idx[word] = len(self.idx2word) - 1
+        return self.word2idx[word]
+
+    def contains(self, word):
+        word = word.lower()
+        return True if word in self.word2idx else False
+
+    def __len__(self):
+        return len(self.idx2word)
+
+
+class Instance(object):
+    def __init__(self):
+        self.sentence1 = []
+
+    def add_sentence(self, sentence, dictionary, is_test_instance=False):
+        #### fix this
+        words = [dictionary.start_token] + word_tokenize(sepearte_operator(sentence.lower())) + [dictionary.end_token]
+        if is_test_instance:
+            for i in range(len(words)):
+                if dictionary.contains(words[i].lower()) == False:
+                    words[i] = dictionary.unknown_token
+        else:
+            for word in words:
+                dictionary.add_word(word.lower())
+
+        self.sentence1 = words
+
+
+class Corpus(object):
+    def __init__(self, path):
+        self.dictionary = Dictionary()
+        self.max_sent_length = 0
+        #### fix this
+        self.train = self.parse(os.path.join(path, 'train_corpus.txt'))
+        self.dev = self.parse(os.path.join(path, 'train_corpus.txt'))
+        self.test = self.parse(os.path.join(path, 'train_corpus.txt'), True)
+
+    def parse(self, path, is_test_instance=False):
+        """Parses the content of a file."""
+        assert os.path.exists(path)
+
+        samples = []
+        with open(path, 'r') as f:
+            for line in f:
+                instance = Instance()
+                if is_test_instance:
+                    instance.add_sentence(line, self.dictionary, is_test_instance)
+                else:
+                    instance.add_sentence(line, self.dictionary)
+                    if self.max_sent_length < len(instance.sentence1):
+                        self.max_sent_length = len(instance.sentence1)
+                samples.append(instance)
+
+        return samples

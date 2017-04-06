@@ -11,7 +11,7 @@ import numpy as np
 import json, os
 
 
-# # import util
+import util
 
 # #### fix this form util
 # def sepearte_operator(x):
@@ -64,8 +64,8 @@ class Instance(object):
         self.sentence1 = []
 
     def add_sentence(self, sentence, dictionary, is_test_instance=False):
-        #### fix this
-        words = [dictionary.start_token] + word_tokenize(sepearte_operator(sentence.lower())) + [dictionary.end_token]
+#### fix this
+        words = [dictionary.start_token] + word_tokenize(util.sepearte_operator(sentence.lower())) + [dictionary.end_token]
         if is_test_instance:
             for i in range(len(words)):
                 if dictionary.contains(words[i].lower()) == False:
@@ -78,13 +78,14 @@ class Instance(object):
 
 
 class Corpus(object):
-    def __init__(self, path):
+    def __init__(self, args):
+        path = args.data_path
         self.dictionary = Dictionary()
         self.max_sent_length = 0
-        #### fix this
-        self.train = self.parse(os.path.join(path, 'train_corpus.txt'))
-        self.dev = self.parse(os.path.join(path, 'train_corpus.txt'))
-        self.test = self.parse(os.path.join(path, 'train_corpus.txt'), True)
+#### fix this
+        self.train = self.parse(os.path.join(path, args.train_data))
+        self.dev = self.parse(os.path.join(path, args.valid_data))
+        self.test = self.parse(os.path.join(path, args.test_data), True)
 
     def parse(self, path, is_test_instance=False):
         """Parses the content of a file."""

@@ -2,7 +2,8 @@ from argparse import ArgumentParser
 from numpy.linalg import norm
 from nltk.tokenize import word_tokenize
 import pickle
-import sys
+from torch.autograd import Variable
+import sys, os
 import numpy as np
 
 def get_args():
@@ -25,13 +26,18 @@ def get_args():
                         help='decay ratio for learning rate')
     parser.add_argument('--clip', type=float, default=0.25,
                         help='gradient clipping')
-    #### fix this
+#### fix this
 
     parser.add_argument('--epochs', type=int, default=1,
                         help='upper limit of epoch')
     parser.add_argument('--train_data', type=str, default='train_corpus.txt',
                         help='train corpus path')
-    #### fix this
+#### fix this
+    parser.add_argument('--valid_data', type=str, default='train_corpus.txt',
+                        help='valid corpus path')
+    parser.add_argument('--test_data', type=str, default='train_corpus.txt',
+                        help='test corpus path')
+#### fix this
 
     parser.add_argument('--batch_size', type=int, default=2, metavar='N',
                         help='batch size')
@@ -58,7 +64,7 @@ def get_args():
                         help='random seed for reproducibility')
     parser.add_argument('--cuda', action='store_true',
                         help='use CUDA for computation')
-    parser.add_argument('--gpu', type=int, default=1,
+    parser.add_argument('--gpu', type=int, default=0,
                         help='number of gpu can be used for computation')
     parser.add_argument('--print_every', type=int, default=2000, metavar='N',
                         help='training report interval')
@@ -76,7 +82,7 @@ def get_args():
                         help='GloVe word embedding version')
     parser.add_argument('--word_vectors_directory', type=str, default='../data/glove/',
                         help='Path of GloVe word embeddings')
-    parser.add_argument('--data_path', default='./')
+    parser.add_argument('--data_path', default='./soft_data/')
 
     args = parser.parse_args()
     return args
@@ -106,6 +112,19 @@ def sepearte_operator(x):
     return x
 
 
+def repackage_hidden(h):
+    """Wraps hidden states in new Variables, to detach them from their history."""
+    if type(h) == Variable:
+        return Variable(h.data)
+    else:
+        return tuple(repackage_hidden(v) for v in h)
+
+def getVariable(h):
+    """Wraps hidden states in new Variables, to detach them from their history."""
+    if type(h) == Variable:
+        return h
+    else:
+        return  Variable(h)
 
 
 
@@ -135,26 +154,25 @@ def load_word_embeddings(directory, file, dic):
 
 def get_initial_embeddings(file_name, directory, file, dic):
     if (os.path.isfile(file_name)):
-        print('========================== loading input matrix', file = sys.stderr)
+        # print('========================== loading input glove matrix for corpus dictionary', file = sys.stderr)
         embeddings_index = pickle.load(open(file_name, 'rb'))
-        print('========================== loading complete', file = sys.stderr)
-        else:
-        print('========================== no cached file!!! starting to generate now', file = sys.stderr)
-        embeddings_index = load_word_embeddings(directory, file, corpus.dictionary)
-        print('========================== Generation comple dumping now', file = sys.stderr)
+        # print('========================== loading complete', file = sys.stderr)
+    else:
+        # print('========================== no cached file!!! starting to generate now', file = sys.stderr)
+        embeddings_index = load_word_embeddings(directory, file, dic)
+        # print('========================== Generation comple dumping now', file = sys.stderr)
         save_object(embeddings_index, file_name)
-        print('========================== Saved dictionary completed!!!', file = sys.stderr)
-        return embeddings_index
+        # print('========================== Saved dictionary completed!!!', file = sys.stderr)
+    return embeddings_index
 
-    def batchify(data, bsz, cuda_true=True):
-        nbatch = len(data) // bsz
-        # Trim off any extra elements that wouldn't cleanly fit (remainders).
-        #     data = data[0:nbatch * bsz]
-        # Evenly divide the data across the bsz batches.
-        #     print (bsz)
-        #     batched_data = [[data[bsz * i + j] for j in range(bsz)] for i in range(nbatch)]
-        batched_data = [data[bsz * i: bsz * (i + 1)] for i in range(nbatch)]
-        if (bsz * nbatch != len(data)): batched_data.append(data[bsz * nbatch:])
-        #     print (batched_data)
-        if cuda_true: batched_data = batched_data.cuda()
-        return batched_data  # num_batch x batch_size x instance
+def batchify(data, bsz):
+    nbatch = len(data) // bsz
+    # Trim off any extra elements that wouldn't cleanly fit (remainders).
+    #     data = data[0:nbatch * bsz]
+    # Evenly divide the data across the bsz batches.
+    #     print (bsz)
+    #     batched_data = [[data[bsz * i + j] for j in range(bsz)] for i in range(nbatch)]
+    batched_data = [data[bsz * i: bsz * (i + 1)] for i in range(nbatch)]
+    if (bsz * nbatch != len(data)): batched_data.append(data[bsz * nbatch:])
+    #     print (batched_data)
+    return batched_data  # num_batch x batch_size x instance

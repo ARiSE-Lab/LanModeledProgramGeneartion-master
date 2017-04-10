@@ -12,8 +12,12 @@ from numpy.linalg import norm
 from nltk.tokenize import word_tokenize
 import pickle
 from torch.autograd import Variable
-import sys, os
+import sys, os, time, math
 import numpy as np
+import matplotlib as mpl
+mpl.use('Agg')
+import matplotlib.pyplot as plt
+import matplotlib.ticker as ticker
 
 def get_args():
     parser = ArgumentParser(description='attend_analyze_aggregate_nli')
@@ -31,10 +35,12 @@ def get_args():
                         help='number of layers')
     parser.add_argument('--lr', type=float, default=20,
                         help='initial learning rate')
-    parser.add_argument('--lr_decay', type=float, default=.95,
+    parser.add_argument('--lr_decay', type=float, default=.25,
                         help='decay ratio for learning rate')
     parser.add_argument('--clip', type=float, default=0.25,
                         help='gradient clipping')
+#### fix this
+    parser.add_argument('--instance', type=int, default = 0, help='sentence based model (1) or not (0)')
 #### fix this
     parser.add_argument('--epochs', type=int, default=1,
                         help='upper limit of epoch')
@@ -75,9 +81,9 @@ def get_args():
                         help='use CELL for computation')
     parser.add_argument('--gpu', type=int, default=0,
                         help='number of gpu can be used for computation')
-    parser.add_argument('--print_every', type=int, default=2000, metavar='N',
+    parser.add_argument('--print_every', type=int, default=200, metavar='N',
                         help='training report interval')
-    parser.add_argument('--plot_every', type=int, default=2000,
+    parser.add_argument('--plot_every', type=int, default=200,
                         help='plotting interval')
     parser.add_argument('--dev_every', type=int, default=500,
                         help='development report interval')
@@ -171,6 +177,78 @@ def get_initial_embeddings(file_name, path, directory, file, dic):
         # print('========================== Saved dictionary completed!!!', file = sys.stderr)
     return embeddings_index
 
+
+
+def save_model_states(model, loss, epoch, tag):
+    """Save a deep learning network's states in a file."""
+    snapshot_prefix = os.path.join(args.save_path, tag)
+    snapshot_path = snapshot_prefix + '_loss_{:.6f}_epoch_{}_model.pt'.format(loss, epoch)
+    with open(snapshot_path, 'wb') as f:
+        torch.save(model.state_dict(), f)
+
+
+def load_model_states(model, filename):
+    """Load a previously saved model states."""
+    filepath = os.path.join(args.save_path, filename)
+    with open(filepath, 'rb') as f:
+        model.load_state_dict(torch.load(f))
+
+def sentence_to_tensor(sentence, max_sent_length, dictionary):
+    sen_rep = torch.LongTensor(max_sent_length).zero_()
+    for i in range(len(sentence)):
+        word = sentence[i]
+        if word in dictionary.word2idx:
+            sen_rep[i] = dictionary.word2idx[word]
+        else:
+            sen_rep[i] = dictionary.word2idx[dictionary.unknown_token]
+    return sen_rep
+
+
+def instances_to_tensors(instances, dictionary, num_sentences=1):
+    """Convert a list of sequences to a list of tensors."""
+    max_sent_length = 0
+    for item in instances:
+        if max_sent_length < len(item.sentence1):
+            max_sent_length = len(item.sentence1)
+        if(num_sentences==2):
+            if max_sent_length < len(item.sentence2):
+                max_sent_length = len(item.sentence2)
+
+    all_sentences1 = torch.LongTensor(len(instances), max_sent_length)
+    all_sentences2 = torch.LongTensor(len(instances), max_sent_length)
+    labels = torch.LongTensor(len(instances))
+    for i in range(len(instances)):
+        all_sentences1[i] = sentence_to_tensor(instances[i].sentence1, max_sent_length, dictionary)
+        all_sentences2[i] = sentence_to_tensor(instances[i].sentence2, max_sent_length, dictionary)
+        labels[i] = instances[i].label
+    return Variable(all_sentences1), Variable(all_sentences2), Variable(labels)
+
+
+def save_plot(points, filename):
+    """Generate and save the plot."""
+    fig, ax = plt.subplots()
+    loc = ticker.MultipleLocator(base=0.2)  # this locator puts ticks at regular intervals
+    ax.yaxis.set_major_locator(loc)
+    ax.plot(points)
+    fig.savefig(filename)
+    plt.close(fig)  # close the figure
+
+
+def convert_to_minutes(s):
+    """Converts seconds to minutes and seconds"""
+    m = math.floor(s / 60)
+    s -= m * 60
+    return '%dm %ds' % (m, s)
+
+
+def show_progress(since, percent):
+    """Prints time elapsed and estimated time remaining given the current time and progress in %"""
+    now = time.time()
+    s = now - since
+    es = s / percent
+    rs = es - s
+    return '%s (- %s)' % (convert_to_minutes(s), convert_to_minutes(rs))
+
 def batchify(data, bsz, cuda):
     nbatch = len(data) // bsz
     # Trim off any extra elements that wouldn't cleanly fit (remainders).
@@ -194,16 +272,19 @@ def get_batch(source, i, bptt, evaluation=False):
     target = Variable(source[i+1:i+1+seq_len].view(-1))
     return data, target
 
-def evaluate(data_source, model, dictionary):
+def evaluate(data_source, model, dictionary, bptt, criterion):
     # Turn on evaluation mode which disables dropout.
+    args = get_args()
     model.eval()
     total_loss = 0
     ntokens = len(dictionary)
+    eval_batch_size = args.batch_size #// 2
     hidden = model.init_hidden(eval_batch_size)
-    for i in range(0, data_source.size(0) - 1, args.bptt):
-        data, targets = get_batch(data_source, i, evaluation=True)
+    hidden = repackage_hidden(hidden, args.cuda)
+    for i in range(0, data_source.size(0) - 1, bptt):
+        data, targets = get_batch(data_source, i, bptt, evaluation=True)
         output, hidden = model(data, hidden)
         output_flat = output.view(-1, ntokens)
         total_loss += len(data) * criterion(output_flat, targets).data
-        hidden = repackage_hidden(hidden)
+        hidden = repackage_hidden(hidden, args.cuda)
     return total_loss[0] / len(data_source)

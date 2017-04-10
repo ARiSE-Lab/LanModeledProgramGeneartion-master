@@ -6,10 +6,11 @@
 # File Description: This script contains code to train the model.
 ###############################################################################
 
-import time, util, helper, torch
+import time, util, torch
 import torch.nn as nn
 from torch import optim
 from torch.nn.utils import clip_grad_norm
+import math
 
 args = util.get_args()
 
@@ -17,25 +18,58 @@ args = util.get_args()
 class Train:
     """Train class that encapsulate all functionalities of the training procedure."""
 
-    def __init__(self, model, dictionary, embeddings_index, loss):
+    def __init__(self, model, dictionary, embeddings_index, loss_f):
         self.dictionary = dictionary
         self.embeddings_index = embeddings_index
         self.model = model
-        self.loss = loss
-        self.criterion = getattr(nn, self.loss)() # nn.CrossEntropyLoss()  # Combines LogSoftMax and NLLoss in one single class
+        self.loss_f = loss_f
+        self.criterion = getattr(nn, self.loss_f)() # nn.CrossEntropyLoss()  # Combines LogSoftMax and NLLoss in one single class
         self.num_directions = 2 if args.bidirection else 1
         self.lr = args.lr
 
         # Adam optimizer is used for stochastic optimization
-        self.optimizer = optim.Adam(self.model.parameters(), self.lr)
+        self.optimizer = optim.SGD(self.model.parameters(), self.lr)
 
-    def train_epochs(self, train_batches, dev_batches, n_epochs):
+    def train_epochs(self, train_data, val_data): #train_batches, dev_batches
         """Trains model for n_epochs epochs"""
-        for epoch in range(n_epochs):
-            losses = self.train(train_batches, dev_batches, (epoch + 1))
-            helper.save_plot(losses, args.save_path + 'training_loss_plot_epoch_{}.png'.format((epoch + 1)))
+        # Loop over epochs.
+        best_val_loss = None
 
-    def train(self, train_batches, dev_batches, epoch_no):
+        # At any point you can hit Ctrl + C to break out of training early.
+        try:
+            for epoch in range(1, args.epochs + 1):
+                epoch_start_time = time.time()
+
+                plot_losses = self.train(train_data, epoch)
+                #print(plot_losses)
+                #util.save_plot(plot_losses, args.save_path + 'training_loss_plot_epoch_{}.png'.format((epoch)))
+
+                val_loss = util.evaluate(val_data, self.model, self.dictionary, args.bptt, self.criterion)
+
+
+                print('-' * 89)
+                print('| end of epoch {:3d} | time: {:5.2f}s | valid loss {:5.2f} | '
+                      'valid ppl {:8.2f}'.format(epoch, (time.time() - epoch_start_time),
+                                                 val_loss, math.exp(val_loss)))
+                print('-' * 89)
+                # Save the model if the validation loss is the best we've seen so far.
+                if not best_val_loss or val_loss < best_val_loss:
+                    with open(args.save, 'wb') as f:
+                        torch.save(self.model, f)
+                    best_val_loss = val_loss
+                else:
+                    # Anneal the learning rate if no improvement has been seen in the validation dataset.
+                    #self.lr /= 4.0
+                    self.lr = self.lr * args.lr_decay
+                    self.optimizer.param_groups[0]['lr'] = self.lr
+                    print("Decaying learning rate to %g" % self.lr)
+        except KeyboardInterrupt:
+            print('-' * 89)
+            print('Exiting from training early')
+
+
+
+    def train_(self, train_batches, dev_batches, epoch_no, ):
         # Turn on training mode which enables dropout.
         self.model.train()
 
@@ -52,7 +86,7 @@ class Train:
         for batch_no in range(num_batches):
             # Clearing out all previous gradient computations.
             self.optimizer.zero_grad()
-            train_sentences1, train_sentences2, train_labels = helper.instances_to_tensors(train_batches[batch_no],
+            train_sentences1, train_sentences2, train_labels = util.instances_to_tensors(train_batches[batch_no],
                                                                                            self.dictionary)
             if args.cuda:
                 train_sentences1 = train_sentences1.cuda()
@@ -80,7 +114,7 @@ class Train:
                 print_loss_avg = print_loss_total / args.print_every
                 print_loss_total = 0
                 print('%s (%d %d%%) %.4f' % (
-                    helper.show_progress(start, batch_no / num_batches), batch_no,
+                    util.show_progress(start, batch_no / num_batches), batch_no,
                     batch_no / num_batches * 100, print_loss_avg))
 
             if batch_no % args.plot_every == 0 and batch_no > 0:
@@ -102,8 +136,65 @@ class Train:
             if batch_no % args.save_every == 0 and batch_no > 0:
                 if last_best_dev_loss == -1 or last_best_dev_loss > best_dev_loss:
                     last_best_dev_loss = best_dev_loss
-                    helper.save_model(self.model, last_best_dev_loss, epoch_no, 'model')
+                    util.save_model(self.model, last_best_dev_loss, epoch_no, 'model')
 
+        return plot_losses
+
+    def train(self, train_data, epoch):
+        # Turn on training mode which enables dropout.
+        self.model.train()
+        total_loss = 0
+        start_time = time.time()
+
+        plot_losses = []
+        print_loss_total = 0
+        plot_loss_total = 0
+
+        ntokens = len(self.dictionary)
+        hidden = self.model.init_hidden(args.batch_size)
+
+        for batch, i in enumerate(range(0, train_data.size(0) - 1, args.bptt)):
+            data, targets = util.get_batch(train_data, i, args.bptt)
+            # Starting each batch, we detach the hidden state from how it was previously produced.
+            # If we didn't, the model would try backpropagating all the way to start of the dataset.
+
+            if(args.instance): hidden = self.model.init_hidden(args.batch_size)#for each sentence need to initialize
+            hidden = util.repackage_hidden(hidden, args.cuda)
+
+            self.optimizer.zero_grad()
+            output, hidden = self.model(data, hidden)
+            loss = self.criterion(output.view(-1, ntokens), targets)
+
+            # Important if we are using nn.DataParallel()
+            if loss.size(0) > 1:
+                loss = torch.mean(loss)
+            loss.backward()
+
+            # `clip_grad_norm` helps prevent the exploding gradient problem in RNNs / LSTMs.
+            clip_grad_norm(self.model.parameters(), args.clip)
+            self.optimizer.step()
+
+
+            total_loss += loss.data
+            plot_loss_total += loss.data
+
+            if batch % args.print_every == 0 and batch > 0:
+                cur_loss = total_loss[0] / args.log_interval
+                elapsed = time.time() - start_time
+                print('| epoch {:3d} | {:5d}/{:5d} batches | lr {:02.2f} | ms/batch {:5.2f} | '
+                      'loss {:5.2f} | ppl {:8.2f}'.format(
+                    epoch, batch, len(train_data) // args.bptt, self.lr,
+                                  elapsed * 1000 / args.log_interval, cur_loss, math.exp(cur_loss)))
+                total_loss = 0
+                start_time = time.time()
+
+
+            if batch % args.plot_every == 0 and batch > 0:
+                plot_loss_avg = plot_loss_total / args.plot_every
+                plot_losses.append(plot_loss_avg[0])
+                plot_loss_total = 0
+
+        print('returning plot lossses: ', plot_losses)
         return plot_losses
 
     def validate(self, dev_batches):

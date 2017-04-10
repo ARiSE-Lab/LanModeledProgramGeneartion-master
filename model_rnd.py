@@ -53,12 +53,12 @@ class LanguageModel(nn.Module):
         #input = util.getVariable(input)
         #hidden = util.getVariable(hidden)
 
-        #input = util.repackage_hidden(input, self.config.cuda)
-        #hidden = util.repackage_hidden(hidden, self.config.cuda)
+        input = util.repackage_hidden(input, self.config.cuda)
+        hidden = util.repackage_hidden(hidden, self.config.cuda)
 
         emb_drop = self.embedding_drop(input)
         output, hidden = self.encoder_drop(emb_drop, hidden)
-        decoded = self.decoder(output) #process evrything and returns in batch x seq_len x vocab_size
+        decoded = self.decoder(output) #process evrything and returns in batch x seq_len x vocab_size or seq x bsz x vocab
         return decoded, hidden
 
     def init_hidden(self, bsz):

@@ -15,12 +15,13 @@ import time, math
 # from encoder import EncoderRNN
 from embedding_layer import Embedding_Drop_Layer
 from torch.autograd import Variable
-
+import train
 args = util.get_args()
 # args = get_args()
 # Set the random seed manually for reproducibility.
 
 print ('='*90, '\nWARNING:::: please fix nepochs, dictionary lower case, batchify, data path, batch size, trim_data for non divisible by batch size,  Glove embedding initialization (model_rnd.py 45), pickle_file_name!!!!!\n', '='*89)
+print ('='*90, '\nWARNING:::: if you have insatnce based lstm you need to init model for each batch!!!!!\n', '='*89)
 
 torch.manual_seed(args.seed)
 if torch.cuda.is_available():
@@ -89,8 +90,8 @@ if args.cuda:
 # # Train the model
 # ###############################################################################
 ## loss: CrossEntropyLoss :: Combines LogSoftMax and NLLoss in one single class
-#train = train.Train(model, corpus.dictionary, embeddings_index, 'CrossEntropyLoss')
-#train.train_epochs(train_batches, valid_batches, 1)
+train = train.Train(model, corpus.dictionary, embeddings_index, 'CrossEntropyLoss')
+train.train_epochs(train_batches, valid_batches)
 
 
 
@@ -110,82 +111,17 @@ test_data = test_batches
 criterion = nn.CrossEntropyLoss()
 
 ###############################################################################
-# Training code
+# testing code
 ###############################################################################
 
 
-
-
-
-
-
-def train():
-    # Turn on training mode which enables dropout.
-    model.train()
-    total_loss = 0
-    start_time = time.time()
-    ntokens = len(corpus.dictionary)
-    hidden = model.init_hidden(args.batch_size)
-    for batch, i in enumerate(range(0, train_data.size(0) - 1, args.bptt)):
-        data, targets = util.get_batch(train_data, i, args.bptt)
-        # Starting each batch, we detach the hidden state from how it was previously produced.
-        # If we didn't, the model would try backpropagating all the way to start of the dataset.
-        hidden = util.repackage_hidden(hidden, args.cuda)
-        model.zero_grad()
-        output, hidden = model(data, hidden)
-        loss = criterion(output.view(-1, ntokens), targets)
-        loss.backward()
-
-        # `clip_grad_norm` helps prevent the exploding gradient problem in RNNs / LSTMs.
-        torch.nn.utils.clip_grad_norm(model.parameters(), args.clip)
-        for p in model.parameters():
-            p.data.add_(-lr, p.grad.data)
-
-        total_loss += loss.data
-
-        if batch % args.log_interval == 0 and batch > 0:
-            cur_loss = total_loss[0] / args.log_interval
-            elapsed = time.time() - start_time
-            print('| epoch {:3d} | {:5d}/{:5d} batches | lr {:02.2f} | ms/batch {:5.2f} | '
-                    'loss {:5.2f} | ppl {:8.2f}'.format(
-                epoch, batch, len(train_data) // args.bptt, lr,
-                elapsed * 1000 / args.log_interval, cur_loss, math.exp(cur_loss)))
-            total_loss = 0
-            start_time = time.time()
-
-# Loop over epochs.
-lr = args.lr
-best_val_loss = None
-
-# At any point you can hit Ctrl + C to break out of training early.
-try:
-    for epoch in range(1, args.epochs+1):
-        epoch_start_time = time.time()
-        train()
-        val_loss = util.evaluate(val_data, model, corpus.dictionary)
-        print('-' * 89)
-        print('| end of epoch {:3d} | time: {:5.2f}s | valid loss {:5.2f} | '
-                'valid ppl {:8.2f}'.format(epoch, (time.time() - epoch_start_time),
-                                           val_loss, math.exp(val_loss)))
-        print('-' * 89)
-        # Save the model if the validation loss is the best we've seen so far.
-        if not best_val_loss or val_loss < best_val_loss:
-            with open(args.save, 'wb') as f:
-                torch.save(model, f)
-            best_val_loss = val_loss
-        else:
-            # Anneal the learning rate if no improvement has been seen in the validation dataset.
-            lr /= 4.0
-except KeyboardInterrupt:
-    print('-' * 89)
-    print('Exiting from training early')
 
 # Load the best saved model.
 with open(args.save, 'rb') as f:
     model = torch.load(f)
 
 # Run on test data.
-test_loss = util.evaluate(test_data, model, corpus.dictionary)
+test_loss = util.evaluate(test_data, model, corpus.dictionary, args.bptt,  criterion)
 print('=' * 89)
 print('| End of training | test loss {:5.2f} | test ppl {:8.2f}'.format(
     test_loss, math.exp(test_loss)))

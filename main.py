@@ -1,11 +1,3 @@
-###############################################################################
-# Author: Md Rizwan Parvez
-# Project: LanModeledProgramGeneration
-# Date Created: 4/1/2017
-# Some codes are from Wasi Ahmad main.py
-# File Description: This is the main script from where all experimental
-# execution begins.
-###############################################################################
 import torch.nn as nn
 import util, data #, helper, train
 import torch, random

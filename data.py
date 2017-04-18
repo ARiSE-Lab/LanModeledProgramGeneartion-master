@@ -18,28 +18,28 @@ class Dictionary(object):
         self.word2idx = {}
         self.idx2word = []
         # Create and store three special tokens
-        self.start_token = '<SOS>'
-        self.end_token = '<EOS>'
-        self.unknown_token = '<UNKNOWN>'
-        self.pad_token = '<PAD>'
-        self.idx2word.append(self.start_token)
-        self.word2idx[self.start_token] = len(self.idx2word) - 1
-        self.idx2word.append(self.end_token)
-        self.word2idx[self.end_token] = len(self.idx2word) - 1
-        self.idx2word.append(self.unknown_token)
-        self.word2idx[self.unknown_token] = len(self.idx2word) - 1
-        self.idx2word.append(self.pad_token)
-        self.word2idx[self.pad_token] = len(self.idx2word) - 1
+        # self.start_token = '<SOS>'
+        # self.end_token = '<EOS>'
+        # self.unknown_token = '<UNKNOWN>'
+        # self.pad_token = '<PAD>'
+        # self.idx2word.append(self.start_token)
+        # self.word2idx[self.start_token] = len(self.idx2word) - 1
+        # self.idx2word.append(self.end_token)
+        # self.word2idx[self.end_token] = len(self.idx2word) - 1
+        # self.idx2word.append(self.unknown_token)
+        # self.word2idx[self.unknown_token] = len(self.idx2word) - 1
+        # self.idx2word.append(self.pad_token)
+        # self.word2idx[self.pad_token] = len(self.idx2word) - 1
 
     def add_word(self, word):
-        #word = word.lower()
+        #word = word.lower() 
         if word not in self.word2idx:
             self.idx2word.append(word)
             self.word2idx[word] = len(self.idx2word) - 1
         return self.word2idx[word]
 
     def contains(self, word):
-        word = word.lower()
+        # word = word.lower() # i don't htink it's necessary to have lower case for Code Corpus
         return True if word in self.word2idx else False
 
     def __len__(self):
@@ -96,11 +96,9 @@ class Corpus(object):
     def __init__(self, args):
         path = args.data_path
         self.dictionary = Dictionary()
-        self.max_sent_length = 0
-        self.dictionary = Dictionary()
-        self.train_c = self.tokenize(os.path.join(path, 'train.txt'))
-        self.valid_c = self.tokenize(os.path.join(path, 'valid.txt'))
-        self.test_c = self.tokenize(os.path.join(path, 'test.txt'))
+        self.train = self.tokenize(os.path.join(path, 'train.data'))
+        self.val = self.tokenize(os.path.join(path, 'val.data'))
+        self.test = self.tokenize(os.path.join(path, 'test.data'))
 
     def tokenize(self, path):
         """Tokenizes a text file."""
@@ -120,8 +118,8 @@ class Corpus(object):
             token = 0
             for line in f:
                 words = line.split() + ['<eos>']
-                sentence_len = len(words)
-                if(self.max_sent_length<sentence_len): self.max_sent_length = sentence_len
+                # sentence_len = len(words)
+                # if(self.max_sent_length<sentence_len): self.max_sent_length = sentence_len
                 for word in words:
                     ids[token] = self.dictionary.word2idx[word]
                     token += 1

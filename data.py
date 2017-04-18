@@ -1,11 +1,3 @@
-###############################################################################
-# Author: Md Rizwan Parvez
-# Project: LanModeledProgramGeneration
-# Date Created: 4/1/2017
-# Many codes are from Wasi Ahmad data.py
-# File Description: This script provides a definition of the corpus, each
-# example in the corpus and the dictionary.
-###############################################################################
 from nltk.tokenize import word_tokenize
 import numpy as np
 import json, os, torch

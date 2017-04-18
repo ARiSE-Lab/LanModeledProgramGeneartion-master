@@ -1,11 +1,3 @@
-###############################################################################
-# Author: Md Rizwan Parvez
-# Project: LanModeledProgramGeneration
-# Date Created: 4/7/2017
-# Many codes are from Wasi Ahmad train.py
-# File Description: This script contains code to train the model.
-###############################################################################
-
 import time, util, torch
 import torch.nn as nn
 from torch import optim

@@ -1,11 +1,3 @@
-###############################################################################
-# Author: Md Rizwan Parvez
-# Project: LanModeledProgramGeneration
-# Date Created: 4/1/2017
-# Some codes are from Wasi Ahmad main.py
-# File Description: This is the main script from where all experimental
-# execution begins.
-###############################################################################
 import torch.nn as nn
 import util, data 
 import torch, random
@@ -79,12 +71,8 @@ def main():
             loss = loss_function(log_probs, target.squeeze())
             loss.backward()
             optimizer.step()
-            total_loss += loss.data
-            if batch_idx % 50000 == 0:
-                print("num trigrams processed: ", batch_idx)
-            # if(c/5000==0):print('epoch: ', epoch, ' step: ', c,  " loss: ", loss.data, ' total so far: ', total_loss)
-        losses.append(total_loss)
-        print('epoch: ', epoch, " loss: ", total_loss, " ppl:", torch.exp(total_loss.cpu()/c))
+            total_loss += loss.data.cpu()
+        print('epoch: ', epoch, " loss: ", total_loss.tolist()[0], " ppl:", torch.exp(total_loss/c).tolist()[0])
     # print(losses)
 if __name__=='__main__':
     main()

@@ -1,12 +1,3 @@
-###############################################################################
-# Author: Md Rizwan Parvez
-# Project: LanModeledProgramGeneration
-# Date Created: 4/1/2017
-# Some codes are from Wasi Ahmad util.py
-# File Description: This is the files where the args are parsed and
-#all the necessary methods are
-###############################################################################
-
 from argparse import ArgumentParser
 from numpy.linalg import norm
 from nltk.tokenize import word_tokenize

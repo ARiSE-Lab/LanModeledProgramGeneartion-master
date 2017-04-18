@@ -1,11 +1,3 @@
-###################################################################################
-# Author: Md Rizwan Parvez
-# Project: LanModeledProgramGeneration
-# Date Created: 3/27/2017
-# many codes are adopted from Wasi Ahmad encoder
-# File Description: This files encodes the instances by a rnn like 'lstm' , 'gru'
-##################################################################################
-
 import util, torch
 import torch.nn as nn
 from torch.autograd import Variable

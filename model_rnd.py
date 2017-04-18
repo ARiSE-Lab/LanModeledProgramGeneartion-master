@@ -1,12 +1,3 @@
-###############################################################################
-# Author: Md Rizwan Parvez
-# Project: LanModeledProgramGeneration
-# Date Created: 3/27/2017
-# many codes are adopted from Wasi Ahmad QuestionClassifier
-# File Description: This is the main script from where all experimental
-# execution begins.
-###############################################################################
-
 import torch, helper
 import torch.nn as nn
 import torch.nn.functional as F

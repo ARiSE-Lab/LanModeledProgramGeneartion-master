@@ -17,13 +17,14 @@ def main():
     parser.add_argument('--data_path', type = str)
     parser.add_argument('--batch_size', type = int, default = 64)
     parser.add_argument('--seed', type = int, default = 1)
+    parser.add_argument('--lr', type=float, default=0.001, help='initial learning rate')
 
     args = parser.parse_args()
 
     torch.manual_seed(args.seed)
     torch.cuda.manual_seed(args.seed)
 
-    corpus = data.Corpus(args)
+    corpus = data.Corpus(args.data_path)
     vocab = corpus.dictionary
     print('Vocabulary size = ', len(vocab))
 
@@ -52,12 +53,11 @@ def main():
             out = self.linear2(out)
             return out
 
-    losses = []
     criterion = nn.CrossEntropyLoss()
     criterion = criterion.cuda()
     model = NGramLanguageModeler(len(vocab), EMBEDDING_DIM, CONTEXT_SIZE)
     model = nn.DataParallel(model).cuda()
-    optimizer = optim.SGD(model.parameters(), lr=0.001)
+    optimizer = optim.SGD(model.parameters(), lr=args.lr)
     
     for epoch in range(args.nepochs):
         train(args, epoch, model, criterion, train_loader, optimizer)

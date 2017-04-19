@@ -1,62 +1,52 @@
-import torch, helper
 import torch.nn as nn
-import torch.nn.functional as F
 from torch.autograd import Variable
-import util
-from embedding_layer import Embedding_Drop_Layer
-from encoder import EncoderDropoutRNN
-from decoder import DecoderLinear
 
-class LanguageModel(nn.Module):
+class RNNModel(nn.Module):
+    """Container module with an encoder, a recurrent module, and a decoder."""
 
-    def __init__(self, dictionary, embeddings_index, args):
-        """"Constructor of the class."""
-        super(LanguageModel, self).__init__()
-        self.dictionary = dictionary
-        self.embeddings_index = embeddings_index
-        self.config = args
-        self.vocab_size = len(self.dictionary)
+    def __init__(self, rnn_type, ntoken, ninp, nhid, nlayers, dropout=0.5, tie_weights=False):
+        super(RNNModel, self).__init__()
+        self.drop = nn.Dropout(dropout)
+        self.encoder = nn.Embedding(ntoken, ninp)
+        if rnn_type in ['LSTM', 'GRU']:
+            self.rnn = getattr(nn, rnn_type)(ninp, nhid, nlayers, dropout=dropout)
+        else:
+            try:
+                nonlinearity = {'RNN_TANH': 'tanh', 'RNN_RELU': 'relu'}[rnn_type]
+            except KeyError:
+                raise ValueError( """An invalid option for `--model` was supplied,
+                                 options are ['LSTM', 'GRU', 'RNN_TANH' or 'RNN_RELU']""")
+            self.rnn = nn.RNN(ninp, nhid, nlayers, nonlinearity=nonlinearity, dropout=dropout)
+        self.decoder = nn.Linear(nhid, ntoken)
 
-        self.embedding_drop = Embedding_Drop_Layer(self.vocab_size, self.config.emsize, self.config.dropout)
-        self.encoder_drop = EncoderDropoutRNN(args)
-        self.decoder = DecoderLinear(self.config.nhid, self.vocab_size)
-
-        # if tie_weights:
-        #     if nhid != ninp:
-        #         raise ValueError('When using the tied flag, nhid must be equal to emsize')
-        #     self.decoder.weight = self.encoder.weight
+        if tie_weights:
+            if nhid != ninp:
+                raise ValueError('When using the tied flag, nhid must be equal to emsize')
+            self.decoder.weight = self.encoder.weight
 
         self.init_weights()
 
-        # self.rnn_type = rnn_type
-        # self.nhid = nhid
-        # self.nlayers = nlayers
+        self.rnn_type = rnn_type
+        self.nhid = nhid
+        self.nlayers = nlayers
 
     def init_weights(self):
         initrange = 0.1
-        #self.embedding_drop.init_embedding_weights(self.dictionary, self.embeddings_index, self.config.emsize) ## it initializes with glove embeddings
-        self.embedding_drop.init_weight(initrange)#don't know why for encoder only need to init hidden n cell states not weights
-        self.decoder.init_weights(initrange)
-
+        self.encoder.weight.data.uniform_(-initrange, initrange)
+        self.decoder.bias.data.fill_(0)
+        self.decoder.weight.data.uniform_(-initrange, initrange)
 
     def forward(self, input, hidden):
-        ## accepts tensor or variable and make it variable
-        #input = util.getVariable(input)
-        #hidden = util.getVariable(hidden)
-
-        input = util.repackage_hidden(input, self.config.cuda)
-        hidden = util.repackage_hidden(hidden, self.config.cuda)
-
-        emb_drop = self.embedding_drop(input)
-        output, hidden = self.encoder_drop(emb_drop, hidden)
-        decoded = self.decoder(output) #process evrything and returns in batch x seq_len x vocab_size or seq x bsz x vocab
-        return decoded, hidden
+        emb = self.drop(self.encoder(input))
+        output, hidden = self.rnn(emb, hidden)
+        output = self.drop(output)
+        decoded = self.decoder(output.view(output.size(0)*output.size(1), output.size(2)))
+        return decoded.view(output.size(0), output.size(1), decoded.size(1)), hidden
 
     def init_hidden(self, bsz):
-        return self.encoder_drop.init_weights(bsz)
-        # weight = next(self.parameters()).data
-        # if self.rnn_type == 'LSTM':
-        #     return (Variable(weight.new(self.nlayers, bsz, self.nhid).zero_()),
-        #             Variable(weight.new(self.nlayers, bsz, self.nhid).zero_()))
-        # else:
-        #     return Variable(weight.new(self.nlayers, bsz, self.nhid).zero_())
+        weight = next(self.parameters()).data
+        if self.rnn_type == 'LSTM':
+            return (Variable(weight.new(self.nlayers, bsz, self.nhid).zero_()),
+                    Variable(weight.new(self.nlayers, bsz, self.nhid).zero_()))
+        else:
+            return Variable(weight.new(self.nlayers, bsz, self.nhid).zero_())

@@ -57,7 +57,7 @@ def main():
     criterion = criterion.cuda()
     model = NGramLanguageModeler(len(vocab), EMBEDDING_DIM, CONTEXT_SIZE)
     model = nn.DataParallel(model).cuda()
-    optimizer = optim.SGD(model.parameters(), lr=args.lr)
+    optimizer = optim.SGD(model.parameters(), lr=args.lr, momentum = 0.9, weight_decay = 1e-4)
     
     for epoch in range(args.nepochs):
         train(args, epoch, model, criterion, train_loader, optimizer)

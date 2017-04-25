@@ -1,5 +1,7 @@
 import torch.nn as nn
 from torch.autograd import Variable
+import pdb
+import torch
 
 class RNNModel(nn.Module):
     """Container module with an encoder, a recurrent module, and a decoder."""
@@ -38,6 +40,7 @@ class RNNModel(nn.Module):
 
     def forward(self, input, hidden):
         emb = self.drop(self.encoder(input))
+        emb = torch.transpose(emb, 0, 1)
         output, hidden = self.rnn(emb, hidden)
         output = self.drop(output)
         decoded = self.decoder(output.view(output.size(0)*output.size(1), output.size(2)))

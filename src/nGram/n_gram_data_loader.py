@@ -4,22 +4,19 @@ import torch
 import torch.nn as nn
 import torch.utils.data as data
 import pdb
+import pickle
 
 class NgramData(data.Dataset):
 
-    def __init__(self, corpus, split = 'train'):
-        if split == "train":
-            data = corpus.train
-        elif split == "val":
-            data = corpus.val
-        elif split == 'test':
-            data = corpus.test
-        
+    def __init__(self, args, split = 'train'):
+        data = pickle.load(open(os.path.join(args.data_path, split+".data.sentences")))
         print('%s set size = %d' % (split, len(data)))
-    
 
-        self.trigrams = [([data[i], data[i + 1]], data[i + 2]) for i in range(len(data) - 2)]
+        self.trigrams = list()
+        for sentence in data:
+            self.trigrams+=[([sentence[i], sentence[i + 1]], sentence[i + 2]) for i in range(len(sentence) - 2)]    
         print(" %s corpus and length of trigrams....: %d" %(split, len (self.trigrams)))
+
 
     def __getitem__(self, index):
         item = self.trigrams[index]

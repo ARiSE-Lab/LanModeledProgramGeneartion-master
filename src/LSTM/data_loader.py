@@ -7,14 +7,8 @@ import pdb
 
 class LSTMData(data.Dataset):
 
-    def __init__(self, corpus, split = 'train'):
-        if split == "train":
-            self.data = corpus.train
-        elif split == "val":
-            self.data = corpus.val
-        elif split == 'test':
-            self.data = corpus.test
-        
+    def __init__(self, args, split = 'train'):
+        self.data = pickle.load(open(os.path.join(args.data_path, split+".data.sentences")))
         print('%s set size = %d' % (split, len(self.data)))
 
     def __getitem__(self, index):

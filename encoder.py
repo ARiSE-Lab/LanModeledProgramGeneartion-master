@@ -30,7 +30,7 @@ class EncoderDropoutRNN(nn.Module):
             if not config.cell:
                 print('='*90,"\nWARNING: If you want LSTMCell, so you should probably run with --cell\n", '='*89)
                 self.rnn = getattr(nn, self.rnn_type)(self.em_size, self.hidden_size, self.n_layers,
-                                                      batch_first=False, dropout=self.dropout,
+                                                      batch_first=True, dropout=self.dropout,
                                                       bidirectional=self.bidirectional)
                 if(not self.bidirectional):
                     print('='*90, "\nWARNING: If you want bidirectional, so you should probably run with --bidirection\n", '='*89)
@@ -48,6 +48,7 @@ class EncoderDropoutRNN(nn.Module):
     def forward(self, input_variable, hidden):
         #Assumes that receves Variables
         output, hidden = self.rnn(input_variable, hidden)
+
         output = self.drop(output)
         return output, hidden
 

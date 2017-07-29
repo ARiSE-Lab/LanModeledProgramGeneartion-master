@@ -45,12 +45,14 @@ def get_args():
     parser.add_argument('--epochs', type=int, default=1,
                         help='upper limit of epoch')
 #### fix this
-    parser.add_argument('--train_data', type=str, default='train_corpus.txt',
-                        help='train corpus path')
-    parser.add_argument('--valid_data', type=str, default='train_corpus.txt',
-                        help='valid corpus path')
-    parser.add_argument('--test_data', type=str, default='train_corpus.txt',
-                        help='test corpus path')
+    parser.add_argument('--train_data', type=str, default='train.data',
+                        help='train_corpus path')
+    parser.add_argument('--valid_data', type=str, default='valid.data',
+                        help='valid_corpus path')
+    parser.add_argument('--test_data', type=str, default='test.data',
+                        help='test_corpus path')
+    parser.add_argument('--debug_mode', action='store_true',
+                        help='are you debugging your code?')
 #### fix this
     parser.add_argument('--batch_size', type=int, default=20, metavar='N',
                         help='batch size')
@@ -260,16 +262,17 @@ def batchify(data, bsz, cuda):
     #     print (batched_data)
     #return batched_data  # num_batch x batch_size x instance
 
-
+    #print('in batchify: data 0 before transpose: ', data[0], ' data size: ', data.size(), 'batch_size: ', bsz)
     batched_data = data.view(bsz, -1).t().contiguous()
     if cuda:
         batched_data = batched_data.cuda()
+    #print('in batchify: data 0 after transpose: ', batched_data[0], ' data size: ', batched_data.size())
     return batched_data
 
-def get_batch(source, i, bptt, evaluation=False):
+def get_minibatch(source, i, bptt, evaluation=False):
     seq_len = min(bptt, len(source) - 1 - i)
-    data = Variable(source[i:i+seq_len], volatile=evaluation)
-    target = Variable(source[i+1:i+1+seq_len].view(-1))
+    data = Variable(source[i:i+seq_len], volatile=evaluation).t().contiguous()
+    target = Variable(source[i+1:i+1+seq_len]).t().contiguous().view(-1) # for testing gen mode: we skip .view(-1)) and added in train
     return data, target
 
 def evaluate(data_source, model, dictionary, bptt, criterion):
@@ -282,7 +285,7 @@ def evaluate(data_source, model, dictionary, bptt, criterion):
     hidden = model.init_hidden(eval_batch_size)
     hidden = repackage_hidden(hidden, args.cuda)
     for i in range(0, data_source.size(0) - 1, bptt):
-        data, targets = get_batch(data_source, i, bptt, evaluation=True)
+        data, targets = get_minibatch(data_source, i, bptt, evaluation=True)
         output, hidden = model(data, hidden)
         output_flat = output.view(-1, ntokens)
         total_loss += len(data) * criterion(output_flat, targets).data

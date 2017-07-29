@@ -47,8 +47,8 @@ print('Vocabulary size = ', len(corpus.dictionary))
 #### fix this
 #file_name = 'train_corpus_3' + 'embeddings_index.p'
 file_name = 'PBT.p'
-embeddings_index = util.get_initial_embeddings(file_name, args.data_path, args.word_vectors_directory, args.Glove_filename, corpus.dictionary)
-print('Number of OOV words = ', len(corpus.dictionary) - len(embeddings_index))
+#embeddings_index = util.get_initial_embeddings(file_name, args.data_path, args.word_vectors_directory, args.Glove_filename, corpus.dictionary)
+#print('Number of OOV words = ', len(corpus.dictionary) - len(embeddings_index))
 
 ###############################################################################
 # batchify
@@ -60,16 +60,13 @@ valid_batches = util.batchify(corpus.valid_c, args.batch_size, args.cuda)
 #### fix this
 test_batches = util.batchify(corpus.test_c, args.batch_size, args.cuda)
 # print (batchify([2,3,4,3,4,355,4,342,90], 2))
-print('train_batches: ', train_batches.size())
+print('train_batches: ', train_batches.size(), ' valid batches: ', valid_batches.size(), ' test batches: ', test_batches.size())
 
 # ###############################################################################
 # # Build the model
 # ###############################################################################
 
-if args.resume_snapshot:
-    model = torch.load(args.resume_snapshot, map_location=lambda storage, location: storage.cuda(args.gpu))
-else:
-    model = model_rnd.LanguageModel(corpus.dictionary, embeddings_index, args)
+model = model_rnd.LanguageModel(corpus.dictionary, args)
 
 if args.cuda:
     torch.cuda.set_device(args.gpu)
@@ -90,7 +87,9 @@ if args.cuda:
 # # Train the model
 # ###############################################################################
 ## loss: CrossEntropyLoss :: Combines LogSoftMax and NLLoss in one single class
-train = train.Train(model, corpus.dictionary, embeddings_index, 'CrossEntropyLoss')
+if args.debug_mode:
+    train_batches = train_batches[:500]
+train = train.Train(model, corpus.dictionary, 'CrossEntropyLoss')
 train.train_epochs(train_batches, valid_batches)
 
 

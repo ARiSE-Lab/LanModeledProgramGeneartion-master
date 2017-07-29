@@ -98,9 +98,9 @@ class Corpus(object):
         self.dictionary = Dictionary()
         self.max_sent_length = 0
         self.dictionary = Dictionary()
-        self.train_c = self.tokenize(os.path.join(path, 'train.txt'))
-        self.valid_c = self.tokenize(os.path.join(path, 'valid.txt'))
-        self.test_c = self.tokenize(os.path.join(path, 'test.txt'))
+        self.train_c = self.tokenize(os.path.join(path, args.train_data))
+        self.valid_c = self.tokenize(os.path.join(path, args.valid_data))
+        self.test_c = self.tokenize(os.path.join(path, args.test_data))
 
     def tokenize(self, path):
         """Tokenizes a text file."""

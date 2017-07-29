@@ -18,9 +18,8 @@ args = util.get_args()
 class Train:
     """Train class that encapsulate all functionalities of the training procedure."""
 
-    def __init__(self, model, dictionary, embeddings_index, loss_f):
+    def __init__(self, model, dictionary, loss_f):
         self.dictionary = dictionary
-        self.embeddings_index = embeddings_index
         self.model = model
         self.loss_f = loss_f
         self.criterion = getattr(nn, self.loss_f)() # nn.CrossEntropyLoss()  # Combines LogSoftMax and NLLoss in one single class
@@ -143,7 +142,7 @@ class Train:
     def train(self, train_data, epoch):
         # Turn on training mode which enables dropout.
         self.model.train()
-        total_loss = 0
+        batch_loss = 0
         start_time = time.time()
 
         plot_losses = []
@@ -154,15 +153,24 @@ class Train:
         hidden = self.model.init_hidden(args.batch_size)
 
         for batch, i in enumerate(range(0, train_data.size(0) - 1, args.bptt)):
-            data, targets = util.get_batch(train_data, i, args.bptt)
+            data, targets = util.get_minibatch(train_data, i, args.bptt) # bptt = 35 is kinda batch size in gen sense i = i+bptt here
+#### fix this
+            #if i == 0: print (' batch first train data; ', train_data.size() ,'this batch: ', data.size(), ' target size: ', targets.size()) #data size 35 x 20 (here bptt x batch_size) {in gen: batch_size x seq_len}
+            #data = data.t().contiguous() # after permute data size 20 x 35 (here batch_size x bptt) {in gen: seq_len x batch_size so no need in gen mode }
+            #targets = targets.t().contiguous() # same as data
+            #if i == 0: print ('train data; AFTER PERMUTE ', train_data.size() ,'this batch: ', data.size(), ' target size: ', targets.size())
+            #targets = targets.view(-1)
+            #if i == 0: print (' btch first train data; ', train_data.size() ,'this batch: ', data.size(), ' target size: ', targets.size(), targets) #data size 35 x 20 (here bptt x batch_size) {in gen: batch_size x seq_len}
+            
             # Starting each batch, we detach the hidden state from how it was previously produced.
             # If we didn't, the model would try backpropagating all the way to start of the dataset.
 
-            if(args.instance): hidden = self.model.init_hidden(args.batch_size)#for each sentence need to initialize
+            if(args.instance): hidden = self.model.init_hidden(args.batch_size) #for each sentence need to initialize
             hidden = util.repackage_hidden(hidden, args.cuda)
 
             self.optimizer.zero_grad()
             output, hidden = self.model(data, hidden)
+            #if i == 0: print ('final output: ', output.size(), output,  '\n output.view(-1, ntokens): ', output.view(-1, ntokens))
             loss = self.criterion(output.view(-1, ntokens), targets)
 
             # Important if we are using nn.DataParallel()
@@ -175,17 +183,17 @@ class Train:
             self.optimizer.step()
 
 
-            total_loss += loss.data
+            batch_loss += loss.data
             plot_loss_total += loss.data
 
             if batch % args.print_every == 0 and batch > 0:
-                cur_loss = total_loss[0] / args.log_interval
+                cur_loss = batch_loss[0] / args.print_every
                 elapsed = time.time() - start_time
                 print('| epoch {:3d} | {:5d}/{:5d} batches | lr {:02.2f} | ms/batch {:5.2f} | '
                       'loss {:5.2f} | ppl {:8.2f}'.format(
                     epoch, batch, len(train_data) // args.bptt, self.lr,
-                                  elapsed * 1000 / args.log_interval, cur_loss, math.exp(cur_loss)))
-                total_loss = 0
+                                  elapsed * 1000 / args.print_every, cur_loss, math.exp(cur_loss)))
+                batch_loss = 0
                 start_time = time.time()
 
 
@@ -193,6 +201,7 @@ class Train:
                 plot_loss_avg = plot_loss_total / args.plot_every
                 plot_losses.append(plot_loss_avg[0])
                 plot_loss_total = 0
+            #exit()
 
         print('returning plot lossses: ', plot_losses)
         return plot_losses

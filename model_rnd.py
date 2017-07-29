@@ -18,11 +18,10 @@ from decoder import DecoderLinear
 
 class LanguageModel(nn.Module):
 
-    def __init__(self, dictionary, embeddings_index, args):
+    def __init__(self, dictionary, args):
         """"Constructor of the class."""
         super(LanguageModel, self).__init__()
         self.dictionary = dictionary
-        self.embeddings_index = embeddings_index
         self.config = args
         self.vocab_size = len(self.dictionary)
 
@@ -57,8 +56,13 @@ class LanguageModel(nn.Module):
         hidden = util.repackage_hidden(hidden, self.config.cuda)
 
         emb_drop = self.embedding_drop(input)
+        #print (' in model rnd after embedding emb: ', emb_drop.size())
         output, hidden = self.encoder_drop(emb_drop, hidden)
-        decoded = self.decoder(output) #process evrything and returns in batch x seq_len x vocab_size or seq x bsz x vocab
+        #print ('in model rnd after encoding without transpose  output: ' , output.size())
+        #output = output.permute(1,0,2)
+        #print ('in model rnd after encoding after transpose before decode output: ' , output.size())
+        decoded = self.decoder(output) 
+        #print ('in model rnd after decoding final output: ' , output.size()) #process evrything and returns in batch x seq_len x vocab_size or seq x bsz x vocab
         return decoded, hidden
 
     def init_hidden(self, bsz):

@@ -22,14 +22,17 @@ class Dictionary(object):
         self.end_token = '<EOS>'
         self.unknown_token = '<UNKNOWN>'
         self.pad_token = '<PAD>'
+        self.idx2word.append(self.pad_token)
+        self.word2idx[self.pad_token] = len(self.idx2word) - 1
+        self.padding_id = self.word2idx[self.pad_token]
+
         self.idx2word.append(self.start_token)
         self.word2idx[self.start_token] = len(self.idx2word) - 1
         self.idx2word.append(self.end_token)
         self.word2idx[self.end_token] = len(self.idx2word) - 1
         self.idx2word.append(self.unknown_token)
         self.word2idx[self.unknown_token] = len(self.idx2word) - 1
-        self.idx2word.append(self.pad_token)
-        self.word2idx[self.pad_token] = len(self.idx2word) - 1
+        
 
     def add_word(self, word):
         #word = word.lower()
@@ -49,10 +52,17 @@ class Dictionary(object):
 class Instance(object):
     def __init__(self):
         self.sentence1 = []
+        self.target = []
 
     def add_sentence(self, sentence, dictionary, is_test_instance=False):
 #### fix this
         words = [dictionary.start_token] + word_tokenize(util.sepearte_operator(sentence.lower())) + [dictionary.end_token]
+        #removes <, >
+        words.pop(1)
+        words.pop(2)
+        words.pop(len(words)-2)
+        words.pop(len(words)-3)
+
         if is_test_instance:
             for i in range(len(words)):
                 if dictionary.contains(words[i].lower()) == False:
@@ -61,7 +71,8 @@ class Instance(object):
             for word in words:
                 dictionary.add_word(word.lower())
 
-        self.sentence1 = words
+        self.sentence1 = words[:-1]
+        #self.target = words[1:]
 
 
 class Corpus(object):
@@ -98,9 +109,11 @@ class Corpus(object):
         self.dictionary = Dictionary()
         self.max_sent_length = 0
         self.dictionary = Dictionary()
-        self.train_c = self.tokenize(os.path.join(path, args.train_data))
-        self.valid_c = self.tokenize(os.path.join(path, args.valid_data))
-        self.test_c = self.tokenize(os.path.join(path, args.test_data))
+        self.max_length = args.max_length
+        self.train_data, self.train_label  = self.tokenize(os.path.join(path, args.train_data))
+        self.valid_data, self.valid_label = self.tokenize(os.path.join(path, args.valid_data))
+        self.test_data, self.test_label = self.tokenize(os.path.join(path, args.test_data))
+        
 
     def tokenize(self, path):
         """Tokenizes a text file."""
@@ -108,22 +121,40 @@ class Corpus(object):
         # Add words to the dictionary
         with open(path, 'r') as f:
             tokens = 0
+            lines_c = 0
             for line in f:
-                words = line.split() + ['<eos>']
-                tokens += len(words)
+                words = ['<start>'] + line.split() + ['<eos>']
+                len_ = len(words)
+                tokens += len_
+                if(self.max_sent_length <len_): self.max_sent_length = len_
+                lines_c+=1
                 for word in words:
                     self.dictionary.add_word(word)
 
         # Tokenize file content
         with open(path, 'r') as f:
-            ids = torch.LongTensor(tokens)
-            token = 0
+            #print('Creating tensor of size: ', lines_c, self.max_sent_length)
+            print('Reading files: ', path)
+            ids = [] # torch.LongTensor(lines_c, self.max_sent_length)
+            target_vecs = [] #  torch.LongTensor(lines_c, self.max_sent_length)
+            line_c = 0
+            count =0
             for line in f:
-                words = line.split() + ['<eos>']
+                words = ['<start>'] + line.split() + ['<eos>']
                 sentence_len = len(words)
-                if(self.max_sent_length<sentence_len): self.max_sent_length = sentence_len
+                if(sentence_len>self.max_length): 
+                    #print ("sen len: ", sentence_len, ' exceed limit: ', self.max_length, ' skipped!!', count)
+                    count+=1
+                    continue
+                ids.append([])
+                target_vecs.append([])
+                #if(self.max_sent_length<sentence_len): self.max_sent_length = sentence_len
+                token = 0
                 for word in words:
-                    ids[token] = self.dictionary.word2idx[word]
+                    if(token<sentence_len-1 ): ids[line_c].append( self.dictionary.word2idx[word])
+                    if(token>0): target_vecs[line_c].append( self.dictionary.word2idx[word] )
                     token += 1
+                    
+                line_c +=1
 
-        return ids
+        return ids, target_vecs

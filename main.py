@@ -36,7 +36,7 @@ if torch.cuda.is_available():
 #### fix this
 # corpus = data.Corpus(args.data)
 corpus = data.Corpus(args)
-print('Train set size = ', len(corpus.train_c))
+print('Train set size = ', len(corpus.train_data), len(corpus.train_label))
 # print('Development set size = ', len(corpus.dev))
 # print('Test set size = ', len(corpus.test))
 print('Vocabulary size = ', len(corpus.dictionary))
@@ -46,7 +46,7 @@ print('Vocabulary size = ', len(corpus.dictionary))
 ###############################################################################
 #### fix this
 #file_name = 'train_corpus_3' + 'embeddings_index.p'
-file_name = 'PBT.p'
+#file_name = 'PBT.p'
 #embeddings_index = util.get_initial_embeddings(file_name, args.data_path, args.word_vectors_directory, args.Glove_filename, corpus.dictionary)
 #print('Number of OOV words = ', len(corpus.dictionary) - len(embeddings_index))
 
@@ -54,13 +54,22 @@ file_name = 'PBT.p'
 # batchify
 ###############################################################################
 #### fix this
-train_batches = util.batchify(corpus.train_c, args.batch_size, args.cuda)
+
+train_data_trimed, train_label_trimed = util.batchify(corpus.train_data, corpus.train_label, args.batch_size, args.cuda) #[82915, 20] batch size = 20, it's kinda seq len in gen sense
 ##### fix this
-valid_batches = util.batchify(corpus.valid_c, args.batch_size, args.cuda)
+#valid_batches = util.batchify(corpus.valid, args.batch_size, args.cuda)
+valid_data_trimed, valid_label_trimed = util.batchify(corpus.valid_data, corpus.valid_label, args.batch_size, args.cuda) #[82915, 20] batch size = 20, it's kinda seq len in gen sense
+
 #### fix this
-test_batches = util.batchify(corpus.test_c, args.batch_size, args.cuda)
+#test_batches = util.batchify(corpus.test, args.batch_size, args.cuda) 
+test_data_trimed, test_label_trimed = util.batchify(corpus.test_data, corpus.test_label, args.batch_size, args.cuda) #[82915, 20] batch size = 20, it's kinda seq len in gen sense
+
+assert len(train_data_trimed) == len(train_label_trimed)
+assert len(valid_data_trimed) == len(valid_label_trimed)
+assert len(test_data_trimed) == len(test_label_trimed)
 # print (batchify([2,3,4,3,4,355,4,342,90], 2))
-print('train_batches: ', train_batches.size(), ' valid batches: ', valid_batches.size(), ' test batches: ', test_batches.size())
+print('train_batches: size: ', len(train_data_trimed) ) #, 'seq len: ', len(train_data_trimed[0]), '1st instance: ', train_data_trimed[0][:50], '1st label: ', train_label_trimed[0][:50] )# , train_batches[0][0].sentence1)
+
 
 # ###############################################################################
 # # Build the model
@@ -88,9 +97,9 @@ if args.cuda:
 # ###############################################################################
 ## loss: CrossEntropyLoss :: Combines LogSoftMax and NLLoss in one single class
 if args.debug_mode:
-    train_batches = train_batches[:500]
+    train_data_trimed = train_data_trimed[:500]
 train = train.Train(model, corpus.dictionary, 'CrossEntropyLoss')
-train.train_epochs(train_batches, valid_batches)
+train.train_epochs(train_data_trimed, train_label_trimed , valid_data_trimed, valid_label_trimed)
 
 
 
@@ -99,15 +108,15 @@ train.train_epochs(train_batches, valid_batches)
 ###############################################################################
 # fix this
 ###############################################################################
-train_data = train_batches
-val_data = valid_batches
-test_data = test_batches
+#train_data = train_batches
+#val_data = valid_batches
+#test_data = test_batches
 #ntokens = len(corpus.dictionary)
 #model = model.RNNModel(args.model, ntokens, args.emsize, args.nhid, args.nlayers, args.dropout, args.tied)
 #if args.cuda:
 #    model.cuda()
 
-criterion = nn.CrossEntropyLoss()
+criterion = nn.CrossEntropyLoss(size_average=True)
 
 ###############################################################################
 # testing code
@@ -120,8 +129,8 @@ with open(args.save, 'rb') as f:
     model = torch.load(f)
 
 # Run on test data.
-test_loss = util.evaluate(test_data, model, corpus.dictionary, args.bptt,  criterion)
+test_loss = util.evaluate(test_data_trimed, test_label_trimed, model, corpus.dictionary, criterion, args.nepochs, None)
 print('=' * 89)
-print('| End of training | test loss {:5.2f} | test ppl {:8.2f}'.format(
+print('| End of training | test loss {:.2f} | test ppl {:5.2f} |'.format(
     test_loss, math.exp(test_loss)))
 print('=' * 89)

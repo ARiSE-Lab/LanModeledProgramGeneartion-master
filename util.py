@@ -12,7 +12,7 @@ from numpy.linalg import norm
 from nltk.tokenize import word_tokenize
 import pickle
 from torch.autograd import Variable
-import sys, os, time, math
+import sys, os, time, math, torch
 import numpy as np
 import matplotlib as mpl
 mpl.use('Agg')
@@ -54,7 +54,7 @@ def get_args():
     parser.add_argument('--debug_mode', action='store_true',
                         help='are you debugging your code?')
 #### fix this
-    parser.add_argument('--batch_size', type=int, default=20, metavar='N',
+    parser.add_argument('--batch_size', type=int, default=1, metavar='N',
                         help='batch size')
     parser.add_argument('--bptt', type=int, default=35,
                         help='sequence length')
@@ -66,10 +66,10 @@ def get_args():
                         help='index of the start of a sentence token')
     parser.add_argument('--eos_token', type=int, default=1,
                         help='index of the end of a sentence token')
-    parser.add_argument('--max_length', type=int, default=10,
-                        help='maximum length of a query')
+    parser.add_argument('--max_length', type=int, default=200,
+                        help='maximum length of a line')
     parser.add_argument('--min_length', type=int, default=3,
-                        help='minimum length of a query')
+                        help='minimum length of a line')
     parser.add_argument('--teacher_forcing_ratio', type=int, default=1.0,
                         help='use the real target outputs as each next input, instead of using '
                              'the decoder\'s guess as the next input')
@@ -106,6 +106,11 @@ def get_args():
                         help='report interval')
     parser.add_argument('--save', type=str, default='model.pt',
                         help='path to save the final model')
+    parser.add_argument('--resume', action='store_true',
+                        help='Resume training or not')
+    parser.add_argument('--log_dir', type=str, default='./log')
+    parser.add_argument('--start_epoch', type=int, default=0)
+    parser.add_argument('--nepochs', type=int, default=1)
     args = parser.parse_args()
     return args
 
@@ -196,34 +201,29 @@ def load_model_states(model, filename):
         model.load_state_dict(torch.load(f))
 
 def sentence_to_tensor(sentence, max_sent_length, dictionary):
-    sen_rep = torch.LongTensor(max_sent_length).zero_()
+    sen_rep = torch.LongTensor(max_sent_length).zero_() # pad id = 0 that's is the trick for padding
+    tar_rep = torch.LongTensor(max_sent_length).zero_() # pad id = 0 that's is the trick for padding
     for i in range(len(sentence)):
         word = sentence[i]
         if word in dictionary.word2idx:
             sen_rep[i] = dictionary.word2idx[word]
         else:
             sen_rep[i] = dictionary.word2idx[dictionary.unknown_token]
-    return sen_rep
+        if i>0:
+            tar_rep[i-1] = sen_rep[i]
+    return sen_rep, tar_rep
 
 
-def instances_to_tensors(instances, dictionary, num_sentences=1):
+def instances_to_tensors(instances, dictionary):
     """Convert a list of sequences to a list of tensors."""
-    max_sent_length = 0
-    for item in instances:
-        if max_sent_length < len(item.sentence1):
-            max_sent_length = len(item.sentence1)
-        if(num_sentences==2):
-            if max_sent_length < len(item.sentence2):
-                max_sent_length = len(item.sentence2)
-
-    all_sentences1 = torch.LongTensor(len(instances), max_sent_length)
-    all_sentences2 = torch.LongTensor(len(instances), max_sent_length)
-    labels = torch.LongTensor(len(instances))
+    max_sent_length = max(len(x.sentence1) for x in instances)
+    data = torch.LongTensor(len(instances), max_sent_length)
+    targets = torch.LongTensor(len(instances), max_sent_length)
     for i in range(len(instances)):
-        all_sentences1[i] = sentence_to_tensor(instances[i].sentence1, max_sent_length, dictionary)
-        all_sentences2[i] = sentence_to_tensor(instances[i].sentence2, max_sent_length, dictionary)
-        labels[i] = instances[i].label
-    return Variable(all_sentences1), Variable(all_sentences2), Variable(labels)
+        data[i], targets[i] = sentence_to_tensor(instances[i].sentence1, max_sent_length, dictionary)
+    
+
+    return Variable(data), Variable(targets.view(-1))
 
 
 def save_plot(points, filename):
@@ -251,43 +251,70 @@ def show_progress(since, percent):
     rs = es - s
     return '%s (- %s)' % (convert_to_minutes(s), convert_to_minutes(rs))
 
-def batchify(data, bsz, cuda):
+def batchify(data, labels, bsz, cuda):
     nbatch = len(data) // bsz
     # Trim off any extra elements that wouldn't cleanly fit (remainders).
-    #data = data[0:nbatch * bsz, cuda]
-    data = data.narrow(0, 0, nbatch * bsz)
-
+    print ('bsz: ', bsz, 'trimed to: ', nbatch * bsz)
+    data = data[0: nbatch * bsz]
+    labels = labels[0: nbatch * bsz]
     #batched_data = [data[bsz * i: bsz * (i + 1)] for i in range(nbatch)]
     #if (bsz * nbatch != len(data)): batched_data.append(data[bsz * nbatch:])
     #     print (batched_data)
     #return batched_data  # num_batch x batch_size x instance
 
     #print('in batchify: data 0 before transpose: ', data[0], ' data size: ', data.size(), 'batch_size: ', bsz)
-    batched_data = data.view(bsz, -1).t().contiguous()
-    if cuda:
-        batched_data = batched_data.cuda()
+    #batched_data = data.view(bsz, -1).t().contiguous()
+    #if cuda:
+        #batched_data = data.cuda()
+        #batched_label = labels.cuda()
     #print('in batchify: data 0 after transpose: ', batched_data[0], ' data size: ', batched_data.size())
-    return batched_data
+    return data, labels
 
-def get_minibatch(source, i, bptt, evaluation=False):
-    seq_len = min(bptt, len(source) - 1 - i)
-    data = Variable(source[i:i+seq_len], volatile=evaluation).t().contiguous()
-    target = Variable(source[i+1:i+1+seq_len]).t().contiguous().view(-1) # for testing gen mode: we skip .view(-1)) and added in train
-    return data, target
-
-def evaluate(data_source, model, dictionary, bptt, criterion):
-    # Turn on evaluation mode which disables dropout.
+def get_minibatch(source, label, i, bsz, padding_id, evaluation=False):
     args = get_args()
+    batch_len = min(bsz, len(source) - i)
+
+    data_list= source[i:i+batch_len] #.t().contiguous() # transpose for batch first e.g., 20 x 35
+    target_list = label[i:i+batch_len] # .t().contiguous().view(-1) # for testing gen mode: we skip .view(-1)) and added in train
+
+    seq_len = max(len(x) for x in data_list)
+    data_list = np.array([ np.pad(x, (0,seq_len-len(x)), "constant",constant_values=padding_id) for x in data_list ])
+    target_list = np.array([ np.pad(x, (0,seq_len-len(x)), "constant",constant_values=padding_id) for x in target_list ])
+
+    
+    data  = torch.from_numpy(data_list)
+    target = torch.from_numpy(target_list)
+
+    if args.cuda:
+        data = data.cuda()
+        target = target.cuda()
+    
+    return Variable(data, volatile=evaluation), Variable(target.view(-1))
+
+def evaluate(valid_data_trimed, valid_label_trimed , model, dictionary, criterion, epoch, testF):
+    # Turn on evaluation mode which disables dropout.
     model.eval()
-    total_loss = 0
+    args = get_args()
+    total_mean_loss = 0
     ntokens = len(dictionary)
     eval_batch_size = args.batch_size #// 2
-    hidden = model.init_hidden(eval_batch_size)
-    hidden = repackage_hidden(hidden, args.cuda)
-    for i in range(0, data_source.size(0) - 1, bptt):
-        data, targets = get_minibatch(data_source, i, bptt, evaluation=True)
+    
+     
+    for batch, i in enumerate(range(0, len(valid_data_trimed) - 1, eval_batch_size)):
+        data, targets = get_minibatch(valid_data_trimed, valid_label_trimed, i, eval_batch_size, dictionary.padding_id, evaluation=True)
+        mask = data.ne(dictionary.padding_id)
+        hidden = model.init_hidden(eval_batch_size) #for each sentence need to initialize
+        hidden = repackage_hidden(hidden, args.cuda)
         output, hidden = model(data, hidden)
         output_flat = output.view(-1, ntokens)
-        total_loss += len(data) * criterion(output_flat, targets).data
-        hidden = repackage_hidden(hidden, args.cuda)
-    return total_loss[0] / len(data_source)
+        loss =  criterion(output_flat, targets)
+        mean_loss = loss #torch.mean(torch.masked_select(loss.data, mask))
+        total_mean_loss += mean_loss.data
+
+    model.train()
+    ppl = torch.exp(total_mean_loss/batch)[0]
+    print('Validation epoch: ', epoch, " loss: ", total_mean_loss[0]/batch, " ppl:", ppl)
+    if(testF!=None):
+        testF.write('{}, {}, {}\n'.format(epoch, total_mean_loss[0]/batch, ppl))
+        testF.flush()
+    return total_mean_loss[0] / batch

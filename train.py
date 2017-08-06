@@ -10,7 +10,7 @@ import time, util, torch
 import torch.nn as nn
 from torch import optim
 from torch.nn.utils import clip_grad_norm
-import math, os
+import math, os, shutil
 
 args = util.get_args()
 
@@ -20,7 +20,7 @@ class Train:
 
     def __init__(self, model, dictionary, loss_f):
         self.dictionary = dictionary
-        self.model = model
+        self.model = self.backward_model = model
         self.loss_f = loss_f
         self.criterion = getattr(nn, self.loss_f)(size_average=True) # nn.CrossEntropyLoss()  # Combines LogSoftMax and NLLoss in one single class
         self.num_directions = 2 if args.bidirection else 1
@@ -37,7 +37,7 @@ class Train:
         # At any point you can hit Ctrl + C to break out of training early.
         try:
 
-            best_perplexity = 100
+            best_perplexity = math.exp(100)
             if args.resume:
                 trainF = open(os.path.join(args.log_dir, 'train.csv'), 'a')
                 testF = open(os.path.join(args.log_dir, 'test.csv'), 'a')
@@ -46,7 +46,7 @@ class Train:
                     checkpoint = torch.load(os.path.join(args.log_dir, 'checkpoint.pth.tar'))
                     args.start_epoch = checkpoint['epoch']
                     best_perplexity = checkpoint['perplexity']
-                    model.load_state_dict(checkpoint['state_dict'])
+                    self.model.load_state_dict(checkpoint['state_dict'])
                     print("=> loaded checkpoint (epoch {})".format(checkpoint['epoch']))
                 else:
                     print("=> no checkpoint found")
@@ -65,24 +65,30 @@ class Train:
                 #util.save_plot(plot_losses, args.save_path + 'training_loss_plot_epoch_{}.png'.format((epoch)))
 
                 val_loss = util.evaluate(valid_data_trimed, valid_label_trimed , self.model, self.dictionary, self.criterion, epoch, testF)
-
+                ppl = math.exp(val_loss)
 
                 print('-' * 89)
                 print('| end of epoch {:3d} | time: {:5.2f}s | valid loss {:.2f} | '
                       'valid ppl {:8.2f}'.format(epoch, (time.time() - epoch_start_time),
-                                                 val_loss, math.exp(val_loss) ))
+                                                 val_loss, ppl ))
                 print('-' * 89)
                 # Save the model if the validation loss is the best we've seen so far.
-                if not best_val_loss or val_loss < best_val_loss:
-                    with open(args.save, 'wb') as f:
-                        torch.save(self.model, f)
-                    best_val_loss = val_loss
-                else:
+                is_best = ppl < best_perplexity
+                best_perplexity = min(ppl, best_perplexity)
+                filename  = os.path.join(args.log_dir, 'checkpoint.pth.tar')
+                torch.save({'epoch':epoch + 1, 'state_dict': self.model.state_dict(), 'perplexity': ppl}, filename)
+                
+                
+                #os.system('python plot.py {} &'.format(args.log_dir))
+                if is_best:
                     # Anneal the learning rate if no improvement has been seen in the validation dataset.
                     #self.lr /= 4.0
+                    shutil.copyfile(filename, os.path.join(args.log_dir, 'model_best.pth.tar'))
+                else:
                     self.lr = self.lr * args.lr_decay
                     self.optimizer.param_groups[0]['lr'] = self.lr
                     print("Decaying learning rate to %g" % self.lr)
+
         except KeyboardInterrupt:
             print('-' * 89)
             print('Exiting from training early')

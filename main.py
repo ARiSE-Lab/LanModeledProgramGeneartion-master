@@ -11,7 +11,7 @@ import util, data #, helper, train
 import torch, random
 from torch import optim
 import model_rnd
-import time, math
+import time, math, os
 # from encoder import EncoderRNN
 from embedding_layer import Embedding_Drop_Layer
 from torch.autograd import Variable
@@ -28,7 +28,8 @@ if torch.cuda.is_available():
     if not args.cuda:
         print('='*90, "\nWARNING: You have a CUDA device, so you should probably run with --cuda\n", '='*89)
     else:
-        torch.cuda.manual_seed(args.seed)
+    	#torch.cuda.set_device(2)
+    	torch.cuda.manual_seed(args.seed)
 ###############################################################################
 # Load data
 ###############################################################################
@@ -75,11 +76,13 @@ print('train_batches: size: ', len(train_data_trimed) ) #, 'seq len: ', len(trai
 # # Build the model
 # ###############################################################################
 
-model = model_rnd.LanguageModel(corpus.dictionary, args)
+model_f = model_rnd.LanguageModel(corpus.dictionary, args)
+model_b = model_rnd.LanguageModel(corpus.dictionary, args)
 
 if args.cuda:
     torch.cuda.set_device(args.gpu)
-    model.cuda()
+    model_f.cuda()
+    model_b.cuda()
 
 # ###############################################################################
 # # Dummy use the model
@@ -97,8 +100,13 @@ if args.cuda:
 # ###############################################################################
 ## loss: CrossEntropyLoss :: Combines LogSoftMax and NLLoss in one single class
 if args.debug_mode:
-    train_data_trimed = train_data_trimed[:500]
-train = train.Train(model, corpus.dictionary, 'CrossEntropyLoss')
+    train_data_trimed = train_data_trimed[:50]
+    valid_data_trimed = valid_data_trimed[:50]
+    test_data_trimed = test_data_trimed[:50]
+    #print(len(train_data_trimed))
+    #print(train_data_trimed[::-1][-1][::-1])
+    #exit()
+train = train.Train(model_f, model_b, corpus.dictionary, 'CrossEntropyLoss')
 train.train_epochs(train_data_trimed, train_label_trimed , valid_data_trimed, valid_label_trimed)
 
 
@@ -116,7 +124,7 @@ train.train_epochs(train_data_trimed, train_label_trimed , valid_data_trimed, va
 #if args.cuda:
 #    model.cuda()
 
-criterion = nn.CrossEntropyLoss(size_average=True)
+#criterion = nn.CrossEntropyLoss(size_average=True)
 
 ###############################################################################
 # testing code
@@ -125,11 +133,20 @@ criterion = nn.CrossEntropyLoss(size_average=True)
 
 
 # Load the best saved model.
-with open(args.save, 'rb') as f:
-    model = torch.load(f)
+#with open(args.save, 'rb') as f:
+  #  model = torch.load(f)
+if os.path.isfile(os.path.join(args.log_dir, 'forward_model_best.pth.tar')) and os.path.isfile(os.path.join(args.log_dir, 'backward_model_best.pth.tar')):
+    print("=> loading  best models for testing")
+    checkpoint_forward= torch.load(os.path.join(args.log_dir, 'forward_model_best.pth.tar'))
+    checkpoint_backward= torch.load(os.path.join(args.log_dir, 'backward_model_best.pth.tar'))
+    args.start_epoch = checkpoint_forward['epoch']
+    best_perplexity_forward = checkpoint_forward['perplexity']
+    best_perplexity_backward = checkpoint_backward['perplexity']
+    model_f.load_state_dict(checkpoint_forward['state_dict'])
+    model_b.load_state_dict(checkpoint_backward['state_dict'])
 
 # Run on test data.
-test_loss = util.evaluate(test_data_trimed, test_label_trimed, model, corpus.dictionary, criterion, args.nepochs, None)
+test_loss = train.validate(test_data_trimed, test_label_trimed, model_f, model_b, args.nepochs, is_test = True)
 print('=' * 89)
 print('| End of training | test loss {:.2f} | test ppl {:5.2f} |'.format(
     test_loss, math.exp(test_loss)))

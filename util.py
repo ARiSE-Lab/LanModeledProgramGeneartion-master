@@ -19,6 +19,7 @@ mpl.use('Agg')
 import matplotlib.pyplot as plt
 import matplotlib.ticker as ticker
 
+
 def get_args():
     parser = ArgumentParser(description='attend_analyze_aggregate_nli')
     parser.add_argument('--data', type=str, default='../data/snli_1.0/',
@@ -83,7 +84,7 @@ def get_args():
                         help='use CELL for computation')
     parser.add_argument('--gpu', type=int, default=0,
                         help='number of gpu can be used for computation')
-    parser.add_argument('--print_every', type=int, default=200, metavar='N',
+    parser.add_argument('--print_every', type=int, default=500, metavar='N',
                         help='training report interval')
     parser.add_argument('--plot_every', type=int, default=200,
                         help='plotting interval')
@@ -270,16 +271,26 @@ def batchify(data, labels, bsz, cuda):
     #print('in batchify: data 0 after transpose: ', batched_data[0], ' data size: ', batched_data.size())
     return data, labels
 
-def get_minibatch(source, label, i, bsz, padding_id, evaluation=False):
+def get_minibatch(source, label, i, bsz, padding_id, direction = 'forward', evaluation=False):
     args = get_args()
     batch_len = min(bsz, len(source) - i)
 
     data_list= source[i:i+batch_len] #.t().contiguous() # transpose for batch first e.g., 20 x 35
     target_list = label[i:i+batch_len] # .t().contiguous().view(-1) # for testing gen mode: we skip .view(-1)) and added in train
 
+    if direction=='backward':
+        data_list = [ x[::-1] for x in data_list[::-1] ] 
+        target_list = [ x[::-1] for x in target_list[::-1] ] 
+        
+
+
     seq_len = max(len(x) for x in data_list)
-    data_list = np.array([ np.pad(x, (0,seq_len-len(x)), "constant",constant_values=padding_id) for x in data_list ])
-    target_list = np.array([ np.pad(x, (0,seq_len-len(x)), "constant",constant_values=padding_id) for x in target_list ])
+    if direction=='forward':
+        data_list = np.array([ np.pad(x, (0,seq_len-len(x)), "constant",constant_values=padding_id) for x in data_list ])
+        target_list = np.array([ np.pad(x, (0,seq_len-len(x)), "constant",constant_values=padding_id) for x in target_list ])
+    else:
+        data_list = np.array([ np.pad(x, (seq_len-len(x), 0), "constant",constant_values=padding_id) for x in data_list ])
+        target_list = np.array([ np.pad(x, (seq_len-len(x), 0), "constant",constant_values=padding_id) for x in target_list ])
 
     
     data  = torch.from_numpy(data_list)
@@ -291,7 +302,7 @@ def get_minibatch(source, label, i, bsz, padding_id, evaluation=False):
     
     return Variable(data, volatile=evaluation), Variable(target.view(-1))
 
-def evaluate(valid_data_trimed, valid_label_trimed , model, dictionary, criterion, epoch, testF):
+def evaluate(valid_data_trimed, valid_label_trimed , model, dictionary, criterion, epoch, testF, direction):
     # Turn on evaluation mode which disables dropout.
     model.eval()
     args = get_args()
@@ -300,9 +311,9 @@ def evaluate(valid_data_trimed, valid_label_trimed , model, dictionary, criterio
     eval_batch_size = args.batch_size #// 2
     
      
-    for batch, i in enumerate(range(0, len(valid_data_trimed) - 1, eval_batch_size)):
-        data, targets = get_minibatch(valid_data_trimed, valid_label_trimed, i, eval_batch_size, dictionary.padding_id, evaluation=True)
-        mask = data.ne(dictionary.padding_id)
+    for batch, i in enumerate(range(0, len(valid_data_trimed), eval_batch_size)):
+        data, targets = get_minibatch(valid_data_trimed, valid_label_trimed, i, eval_batch_size, dictionary.padding_id, direction, evaluation=True)
+        #mask = data.ne(dictionary.padding_id)
         hidden = model.init_hidden(eval_batch_size) #for each sentence need to initialize
         hidden = repackage_hidden(hidden, args.cuda)
         output, hidden = model(data, hidden)
@@ -311,10 +322,13 @@ def evaluate(valid_data_trimed, valid_label_trimed , model, dictionary, criterio
         mean_loss = loss #torch.mean(torch.masked_select(loss.data, mask))
         total_mean_loss += mean_loss.data
 
+    batch +=1 #starts counting from 0
     model.train()
-    ppl = torch.exp(total_mean_loss/batch)[0]
-    print('Validation epoch: ', epoch, " loss: ", total_mean_loss[0]/batch, " ppl:", ppl)
+    avg_loss = total_mean_loss[0]/batch
+    ppl = math.exp(avg_loss)
+    print('Validation epoch: {}  direction {} avg loss: {:.2f}  ppl: {:.2f} '.format( epoch, direction, avg_loss, ppl) )
     if(testF!=None):
-        testF.write('{}, {}, {}\n'.format(epoch, total_mean_loss[0]/batch, ppl))
+        testF.write('{}, {}, {}\n'.format(epoch, avg_loss, ppl))
         testF.flush()
-    return total_mean_loss[0] / batch
+    return avg_loss
+    

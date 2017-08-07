@@ -29,10 +29,10 @@ class Train:
         self.forward_lr = self.backward_lr = args.lr
 
         # Adam optimizer is used for stochastic optimization
-        self.forward_optimizer = optim.SGD(self.forward_model.parameters(), self.forward_lr)
-        self.backward_optimizer = optim.SGD(self.backward_model.parameters(), self.backward_lr)
+        self.forward_optimizer = optim.Adam(self.forward_model.parameters(), self.forward_lr)
+        self.backward_optimizer = optim.Adam(self.backward_model.parameters(), self.backward_lr)
 
-    def train_single_epoch(self, train_data_trimed, train_label_trimed , valid_data_trimed, valid_label_trimed, trainF, testF, epoch, best_perplexity = math.exp(100), direction = 'forward'): #train_batches, dev_batches
+    def train_single_epoch(self, train_data_trimed, train_label_trimed , valid_data_trimed, valid_label_trimed, trainF, testF, epoch, best_perplexity = math.exp(99), direction = 'forward'): #train_batches, dev_batches
         
         try:
 
@@ -67,18 +67,26 @@ class Train:
             filename  = os.path.join(args.log_dir, direction+'checkpoint.pth.tar')
             
             
-            torch.save({'epoch':epoch + 1, 'state_dict': model.state_dict(), 'perplexity': ppl}, filename)    
             
             
             #os.system('python plot.py {} &'.format(args.log_dir))
             if is_best:
+                if not args.debug_mode:
+                    torch.save({'epoch':epoch + 1, 'state_dict': model.state_dict(), 'perplexity': ppl, 'lr': lr}, filename)    
+            
                 print("saving as best model")
-                shutil.copyfile(filename, os.path.join(args.log_dir, direction+'_model_best.pth.tar'))
+                if not args.debug_mode:
+                    shutil.copyfile(filename, os.path.join(args.log_dir, direction+'_model_best.pth.tar'))
             else:
                 
                 lr  *= args.lr_decay
+                if(direction=='forward'):self.forward_lr = lr
+                else: backward_lr = lr
                 optimizer.param_groups[0]['lr'] = lr
                 print("Decaying learning rate to %g" % lr)
+                if not args.debug_mode:
+                    torch.save({'epoch':epoch + 1, 'state_dict': model.state_dict(), 'perplexity': ppl, 'lr': lr}, filename)    
+            
             return best_perplexity
                 
         except KeyboardInterrupt:
@@ -104,6 +112,10 @@ class Train:
                     checkpoint_forward= torch.load(os.path.join(args.log_dir, 'forwardcheckpoint.pth.tar'))
                     checkpoint_backward= torch.load(os.path.join(args.log_dir, 'backwardcheckpoint.pth.tar'))
                     args.start_epoch = checkpoint_forward['epoch']
+                    self.forward_lr =  checkpoint_forward['lr']
+                    self.backward_lr = checkpoint_backward['lr']
+                    print('loaded forward lr: ', self.forward_lr)
+                    print('loaded backward lr: ', self.backward_lr)
                     best_perplexity_forward = checkpoint_forward['perplexity']
                     best_perplexity_backward = checkpoint_backward['perplexity']
                     self.forward_model.load_state_dict(checkpoint_forward['state_dict'])

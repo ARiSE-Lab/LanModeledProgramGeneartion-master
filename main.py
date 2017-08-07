@@ -21,7 +21,7 @@ args = util.get_args()
 # Set the random seed manually for reproducibility.
 
 print ('='*90, '\nWARNING:::: please fix nepochs, dictionary lower case, batchify, data path, batch size, trim_data for non divisible by batch size,  Glove embedding initialization (model_rnd.py 45), pickle_file_name!!!!!\n', '='*89)
-print ('='*90, '\nWARNING:::: if you have insatnce based lstm you need to init model for each batch!!!!!\n', '='*89)
+#print ('='*90, '\nWARNING:::: if you have insatnce based lstm you need to init model for each batch!!!!!\n', '='*89)
 
 torch.manual_seed(args.seed)
 if torch.cuda.is_available():

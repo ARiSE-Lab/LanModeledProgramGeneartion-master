@@ -34,7 +34,7 @@ def get_args():
                         help='number of hidden units per layer')
     parser.add_argument('--nlayers', type=int, default=1,
                         help='number of layers')
-    parser.add_argument('--lr', type=float, default=20,
+    parser.add_argument('--lr', type=float, default=1,
                         help='initial learning rate')
     parser.add_argument('--lr_decay', type=float, default=.25,
                         help='decay ratio for learning rate')
@@ -109,7 +109,7 @@ def get_args():
                         help='path to save the final model')
     parser.add_argument('--resume', action='store_true',
                         help='Resume training or not')
-    parser.add_argument('--log_dir', type=str, default='./log')
+    parser.add_argument('--log_dir', type=str, default='./log_adam')
     parser.add_argument('--start_epoch', type=int, default=0)
     parser.add_argument('--nepochs', type=int, default=1)
     args = parser.parse_args()

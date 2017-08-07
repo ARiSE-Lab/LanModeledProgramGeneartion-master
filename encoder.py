@@ -28,12 +28,12 @@ class EncoderDropoutRNN(nn.Module):
 
         if self.rnn_type in ['LSTM', 'GRU']:
             if not config.cell:
-                print('='*90,"\nWARNING: If you want LSTMCell, so you should probably run with --cell\n", '='*89)
+                #print('='*90,"\nWARNING: If you want LSTMCell, so you should probably run with --cell\n", '='*89)
                 self.rnn = getattr(nn, self.rnn_type)(self.em_size, self.hidden_size, self.n_layers,
                                                       batch_first=True, dropout=self.dropout,
                                                       bidirectional=self.bidirectional)
-                if(not self.bidirectional):
-                    print('='*90, "\nWARNING: If you want bidirectional, so you should probably run with --bidirection\n", '='*89)
+                #if(not self.bidirectional):
+                    #print('='*90, "\nWARNING: If you want bidirectional, so you should probably run with --bidirection\n", '='*89)
             else:
                 print("WARNING: in encoder!!! Only encodes no dropout!!!!!!!!!!")
                 self.rnn = getattr(nn, self.rnn_type + 'Cell')(self.em_size, self.hidden_size)

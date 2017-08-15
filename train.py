@@ -131,7 +131,7 @@ class Train:
                 
 
             print("===start training===")
-            for epoch in range(args.start_epoch, args.nepochs + 1):
+            for epoch in range(args.start_epoch, args.nepochs ):
             #for epoch in range(1, args.epochs + 1):
                 epoch_start_time = time.time()
 
@@ -150,6 +150,7 @@ class Train:
                       'valid ppl {:8.2f}'.format(epoch, (time.time() - epoch_start_time),
                                                  val_loss, ppl ))
                 print('-' * 89)
+                
                 
                 
 
@@ -301,7 +302,7 @@ class Train:
             if batch % args.print_every == 0 and batch > 0:
                 cur_loss = batch_loss[0] / args.print_every
                 elapsed = time.time() - start_time
-                print('| epoch {:3d} | {:5d}/{:5d} batches | lr {:02.2f} | ms/batch {:5.2f} | '
+                print('| epoch {:3d} | {:5d}/{:5d} batches | lr {:.5f} | ms/batch {:5.2f} | '
                       'loss {:2.2f} | ppl {:4.2f}'.format(
                     epoch, batch, len(train_data_trimed) // args.batch_size, lr,
                                   elapsed * 1000 / args.print_every, cur_loss, math.exp(cur_loss)))
@@ -329,57 +330,76 @@ class Train:
         # Turn on evaluation mode which disables dropout.
         forward_model.eval()
         backward_model.eval()
+        
+        total_mean_loss_f = 0
+        total_mean_loss_b = 0
+        total_mean_loss = 0
 
-       
-        total_loss = 0
         ntokens = len(self.dictionary)
         eval_batch_size = args.batch_size #// 2
-        
-        total_mean_loss_f = total_mean_loss_b = total_mean_loss = 0
+    
          
         for batch, i in enumerate(range(0, len(valid_data_trimed), eval_batch_size)):
             data_f, targets_f = util.get_minibatch(valid_data_trimed, valid_label_trimed, i, eval_batch_size, self.dictionary.padding_id, 'forward', evaluation=True)
             data_b, targets_b = util.get_minibatch(valid_data_trimed, valid_label_trimed, i, eval_batch_size, self.dictionary.padding_id, 'backward', evaluation=True)
+
+            #mask = data.ne(dictionary.padding_id)
             hidden_f = forward_model.init_hidden(eval_batch_size) #for each sentence need to initialize
-            hidden_f = util.repackage_hidden(hidden_f, args.cuda)
             hidden_b = backward_model.init_hidden(eval_batch_size) #for each sentence need to initialize
-            hidden_b = util.repackage_hidden(hidden_b, args.cuda) 
+
+            hidden_f = util.repackage_hidden(hidden_f, args.cuda)
+            hidden_b = util.repackage_hidden(hidden_b, args.cuda)
+
             output_f, hidden_f = forward_model(data_f, hidden_f)
             output_b, hidden_b = backward_model(data_b, hidden_b)
-            output_f = output_f.view(-1, ntokens)
-            output_b = output_b.view(-1, ntokens)
-            idx = torch.range(output_b.size(0)-1, 0, -1).long()
+
+            output_flat_f = output_f.view(-1, ntokens)
+            output_flat_b = output_b.view(-1, ntokens)
+
+
+            idx = torch.range(output_flat_b.size(0)-1, 0, -1).long()
             idx = torch.autograd.Variable(idx)
             if args.cuda:
                 idx = idx.cuda()
-            output_b_flipped = output_b.index_select(0, idx)
+            output_flat_b_flipped = output_flat_b.index_select(0, idx)
             assert targets_f.size() == targets_b.size()
-            assert output_f.size() == output_b_flipped.size()
-            output = output_f + output_b_flipped
-
-            #print('target forward ', targets_f[0], ' backward: ', targets_b[-1] , ' prediction  forward: ', output_f[0][5], ' backward: ', output_b[-1][5], output[0][5] )
-            #exit()
+            assert output_flat_f.size() == output_flat_b_flipped.size()
+            output = output_flat_f + output_flat_b_flipped
             output_flat = output.view(-1, ntokens)
-            loss_f = loss =  self.criterion(output_f, targets_f)
-            total_mean_loss_f+=loss_f.data
-            loss_b = self.criterion(output_b, targets_b)
-            total_mean_loss_b+=loss_b.data
-            loss =  self.criterion(output_flat, targets_f)
-            mean_loss = loss #torch.mean(torch.masked_select(loss.data, mask))
-            total_mean_loss += mean_loss.data
-        
 
-        # Turn on training mode at the end of validation.
-        batch+=1 #starts counting from 0
+
+            loss_f =  self.criterion(output_flat_f, targets_f)
+            loss_b =  self.criterion(output_flat_b, targets_b)
+
+            loss = self.criterion(output_flat, targets_f)
+
+            mean_loss_f = loss_f #torch.mean(torch.masked_select(loss.data, mask))
+            mean_loss_b = loss_b #torch.mean(torch.masked_select(loss.data, mask))
+            mean_loss = loss
+            
+            total_mean_loss_f += mean_loss_f.data
+            total_mean_loss_b += mean_loss_b.data
+            total_mean_loss += mean_loss.data
+
+
+        batch +=1 #starts counting from 0 hence total num batch (after finishing) = batch + 1
         forward_model.train()
         backward_model.train()
+
+        avg_loss_f = total_mean_loss_f[0]/batch
+        avg_loss_b = total_mean_loss_b[0]/batch
         avg_loss = total_mean_loss[0]/batch
+
+        ppl_f = math.exp(avg_loss_f)
+        ppl_b = math.exp(avg_loss_b)
         ppl = math.exp(avg_loss)
+
         if not is_test:
             print('Validation epoch: ', epoch)
         else:
              print ("Testing")
-        print(" avg loss forward: {:.2f} backward: {:.2f} bidirectional {:.2f} bidir_ppl {:.2f} ".format( total_mean_loss_f[0], total_mean_loss_b[0],  avg_loss,  ppl))
+             
+        print('After epoch: {}  direction {} avg loss: {:.2f}  ppl: {:.2f} '.format( epoch, 'forward', avg_loss_f, ppl_f) )
+        print('After epoch: {}  direction {} avg loss: {:.2f}  ppl: {:.2f} '.format( epoch, 'backward', avg_loss_b, ppl_b) )
+        print('After epoch: {}  direction {} avg loss: {:.2f}  ppl: {:.2f} '.format( epoch, 'bidirectional', avg_loss, ppl) )
         return avg_loss
-
-        #return avg_loss / num_batches

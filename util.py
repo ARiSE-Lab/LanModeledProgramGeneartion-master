@@ -34,9 +34,9 @@ def get_args():
                         help='number of hidden units per layer')
     parser.add_argument('--nlayers', type=int, default=1,
                         help='number of layers')
-    parser.add_argument('--lr', type=float, default=1,
+    parser.add_argument('--lr', type=float, default=0.0001,
                         help='initial learning rate')
-    parser.add_argument('--lr_decay', type=float, default=.25,
+    parser.add_argument('--lr_decay', type=float, default=.5,
                         help='decay ratio for learning rate')
     parser.add_argument('--clip', type=float, default=0.25,
                         help='gradient clipping')
@@ -322,7 +322,7 @@ def evaluate(valid_data_trimed, valid_label_trimed , model, dictionary, criterio
         mean_loss = loss #torch.mean(torch.masked_select(loss.data, mask))
         total_mean_loss += mean_loss.data
 
-    batch +=1 #starts counting from 0
+    batch +=1 #starts counting from 0 hence total num batch (after finishing) = batch + 1
     model.train()
     avg_loss = total_mean_loss[0]/batch
     ppl = math.exp(avg_loss)

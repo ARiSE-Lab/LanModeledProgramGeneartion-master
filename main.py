@@ -124,7 +124,7 @@ train.train_epochs(train_data_trimed, train_label_trimed , valid_data_trimed, va
 #if args.cuda:
 #    model.cuda()
 
-#criterion = nn.CrossEntropyLoss(size_average=True)
+criterion = nn.CrossEntropyLoss(size_average=True)
 
 ###############################################################################
 # testing code
@@ -136,7 +136,7 @@ train.train_epochs(train_data_trimed, train_label_trimed , valid_data_trimed, va
 #with open(args.save, 'rb') as f:
   #  model = torch.load(f)
 if os.path.isfile(os.path.join(args.log_dir, 'forward_model_best.pth.tar')) and os.path.isfile(os.path.join(args.log_dir, 'backward_model_best.pth.tar')):
-    print("=> loading  best models for testing")
+    print("=> Starting loading  best models for testing")
     checkpoint_forward= torch.load(os.path.join(args.log_dir, 'forward_model_best.pth.tar'))
     checkpoint_backward= torch.load(os.path.join(args.log_dir, 'backward_model_best.pth.tar'))
     args.start_epoch = checkpoint_forward['epoch']
@@ -144,8 +144,17 @@ if os.path.isfile(os.path.join(args.log_dir, 'forward_model_best.pth.tar')) and 
     best_perplexity_backward = checkpoint_backward['perplexity']
     model_f.load_state_dict(checkpoint_forward['state_dict'])
     model_b.load_state_dict(checkpoint_backward['state_dict'])
-
+    print("=> Finished loading  best models for testing")
 # Run on test data.
+#print ('using simple forward')
+#util.evaluate(valid_data_trimed, valid_label_trimed ,  model_f, corpus.dictionary, criterion, 0, None, 'forward')
+#print('-' * 89)
+#print ('using simple backward')
+#util.evaluate(valid_data_trimed, valid_label_trimed , model_b, corpus.dictionary, criterion, 0, None, 'backward')
+#print('-' * 89)
+
+
+
 test_loss = train.validate(test_data_trimed, test_label_trimed, model_f, model_b, args.nepochs, is_test = True)
 print('=' * 89)
 print('| End of training | test loss {:.2f} | test ppl {:5.2f} |'.format(

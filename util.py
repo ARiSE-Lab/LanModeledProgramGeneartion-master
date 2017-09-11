@@ -331,4 +331,15 @@ def evaluate(valid_data_trimed, valid_label_trimed , model, dictionary, criterio
         testF.write('{}, {}, {}\n'.format(epoch, avg_loss, ppl))
         testF.flush()
     return avg_loss
+
+def view_bidirection_calculation(output_flat_f, output_flat_b, output_flat,  targets_f, dictionary, k = 5):
+    topk_scores, topk_tokenIds = torch.topk(output_flat_f, k)
+    for idx in range(10):
+        print (,'__'*50,'\nTarget word: ', dictionary.idx2word[targets_f.data[idx]], '\n','__'*50, '\n')
+        for i in range(k):
+            print(dictionary.idx2word[topk_tokenIds.data[idx][i]], topk_scores.data[idx][i])
+
+
+
+
     

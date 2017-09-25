@@ -46,11 +46,11 @@ def get_args():
     parser.add_argument('--epochs', type=int, default=1,
                         help='upper limit of epoch')
 #### fix this
-    parser.add_argument('--train_data', type=str, default='train.data',
+    parser.add_argument('--train_data', type=str, default='train_var.data',
                         help='train_corpus path')
-    parser.add_argument('--valid_data', type=str, default='valid.data',
+    parser.add_argument('--valid_data', type=str, default='valid_var.data',
                         help='valid_corpus path')
-    parser.add_argument('--test_data', type=str, default='test.data',
+    parser.add_argument('--test_data', type=str, default='test_var.data',
                         help='test_corpus path')
     parser.add_argument('--debug_mode', action='store_true',
                         help='are you debugging your code?')
@@ -332,13 +332,24 @@ def evaluate(valid_data_trimed, valid_label_trimed , model, dictionary, criterio
         testF.flush()
     return avg_loss
 
-def view_bidirection_calculation(output_flat_f, output_flat_b, output_flat,  targets_f, dictionary, k = 5):
-    topk_scores, topk_tokenIds = torch.topk(output_flat_f, k)
+def view_bidirection_calculation(output_flat_f, output_flat_b_flipped, output_flat,  targets_f, dictionary, k = 5):
+    topk_scores_f, topk_tokenIds_f = torch.topk(output_flat_f, k)
+    topk_scores_b, topk_tokenIds_b = torch.topk(output_flat_b_flipped, k)
+    topk_scores, topk_tokenIds = torch.topk(output_flat, k)
+
     for idx in range(10):
-        print (,'__'*50,'\nTarget word: ', dictionary.idx2word[targets_f.data[idx]], '\n','__'*50, '\n')
+        print ('__'*80,'\nTarget word: ', dictionary.idx2word[targets_f.data[idx]], '\n','__'*80, '\n')
+        for i in range(k):
+            print(dictionary.idx2word[topk_tokenIds_f.data[idx][i]], topk_scores_f.data[idx][i])
+            # print ('__'*20,'\n')
+        print ('\n\n')
+        for i in range(k):
+            print(dictionary.idx2word[topk_tokenIds_b.data[idx][i]], topk_scores_b.data[idx][i])
+            # print ('\n\n')
+        print ('\n\n')
         for i in range(k):
             print(dictionary.idx2word[topk_tokenIds.data[idx][i]], topk_scores.data[idx][i])
-
+        print ('\n\n')
 
 
 

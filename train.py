@@ -281,6 +281,7 @@ class Train:
             optimizer.zero_grad()
             output, hidden = model(data, hidden)
             #if i == 0: print ('final output: ', output.size(), output,  '\n output.view(-1, ntokens): ', output.view(-1, ntokens))
+            m = nn.Softmax()
             loss =  self.criterion(output.view(-1, ntokens), targets)
 
 
@@ -353,10 +354,17 @@ class Train:
             output_f, hidden_f = forward_model(data_f, hidden_f)
             output_b, hidden_b = backward_model(data_b, hidden_b)
 
-            output_flat_f = output_f.view(-1, ntokens)
+            output_flat_f = output_f.view(-1, ntokens) # (batch x seq) x ntokens 
             output_flat_b = output_b.view(-1, ntokens)
 
+            output_flat_f_t = output_flat_f
+            output_flat_b_t = output_flat_b
 
+            m = nn.Softmax()
+            output_flat_f = m(output_flat_f)
+            output_flat_b = m(output_flat_b)
+
+            x = 0.1
             idx = torch.range(output_flat_b.size(0)-1, 0, -1).long()
             idx = torch.autograd.Variable(idx)
             if args.cuda:
@@ -364,14 +372,16 @@ class Train:
             output_flat_b_flipped = output_flat_b.index_select(0, idx)
             assert targets_f.size() == targets_b.size()
             assert output_flat_f.size() == output_flat_b_flipped.size()
-            output = output_flat_f + output_flat_b_flipped
-            output_flat = output.view(-1, ntokens)
+            output = x*output_flat_f + (1-x)*output_flat_b_flipped
+            output_flat = output.view(-1, ntokens) 
 
+            if(i==0): 
+                util.view_bidirection_calculation(output_flat_f, output_flat_b_flipped, output_flat, targets_f, self.dictionary, k = 5)
 
-            loss_f =  self.criterion(output_flat_f, targets_f)
-            loss_b =  self.criterion(output_flat_b, targets_b)
+            loss_f =  self.criterion(output_flat_f_t, targets_f)
+            loss_b =  self.criterion(output_flat_b_t, targets_b)
 
-            loss = self.criterion(output_flat, targets_f)
+            loss = nn.functional.nll_loss(torch.log(output_flat), targets_f, size_average=True)
 
             mean_loss_f = loss_f #torch.mean(torch.masked_select(loss.data, mask))
             mean_loss_b = loss_b #torch.mean(torch.masked_select(loss.data, mask))

@@ -364,7 +364,7 @@ class Train:
             output_flat_f = m(output_flat_f)
             output_flat_b = m(output_flat_b)
 
-            x = 0.1
+            x = 0.5
             idx = torch.range(output_flat_b.size(0)-1, 0, -1).long()
             idx = torch.autograd.Variable(idx)
             if args.cuda:
@@ -375,8 +375,8 @@ class Train:
             output = x*output_flat_f + (1-x)*output_flat_b_flipped
             output_flat = output.view(-1, ntokens) 
 
-            if(i==0): 
-                util.view_bidirection_calculation(output_flat_f, output_flat_b_flipped, output_flat, targets_f, self.dictionary, k = 5)
+            # if(i==0): 
+                # util.view_bidirection_calculation(output_flat_f, output_flat_b_flipped, output_flat, targets_f, self.dictionary, k = 5)
 
             loss_f =  self.criterion(output_flat_f_t, targets_f)
             loss_b =  self.criterion(output_flat_b_t, targets_b)

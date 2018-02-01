@@ -1,386 +1,416 @@
-import argparse
-import time
-import math
-import numpy as np
-import torch
+###############################################################################
+# Author: Md Rizwan Parvez
+# Project: LanModeledProgramGeneration
+# Date Created: 4/1/2017
+# Some codes are from Wasi Ahmad main.py
+# File Description: This is the main script from where all experimental
+# execution begins.
+###############################################################################
 import torch.nn as nn
+import util, data #, helper, train
+import torch, random
+from torch import optim
+import model_rnd
+import time, math, os
+from argparse import ArgumentParser
+from embedding_layer import Embedding_Drop_Layer
 from torch.autograd import Variable
+import train
 
-import data
-import model as model_file
 
-from utils import batchify, get_batch, repackage_hidden
+args = util.get_args()
 
-parser = argparse.ArgumentParser(description='PyTorch PennTreeBank RNN/LSTM Language Model')
-parser.add_argument('--debug', type=int, default=-1,
-                    help='location of the data corpus')
-parser.add_argument('--data', type=str, default='../data/recipe_ori',
-                    help='location of the data corpus')
-parser.add_argument('--data_type', type=str, default='../data/recipe_type',
-                    help='location of the data corpus')
-parser.add_argument('--model', type=str, default='LSTM',
-                    help='type of recurrent net (LSTM, QRNN, GRU)')
-parser.add_argument('--emsize', type=int, default=400,
-                    help='size of word embeddings')
-parser.add_argument('--nhid', type=int, default=1150,
-                    help='number of hidden units per layer')
-parser.add_argument('--nlayers', type=int, default=3,
-                    help='number of layers')
-parser.add_argument('--lr', type=float, default=30,
-                    help='initial learning rate')
-parser.add_argument('--clip', type=float, default=0.25,
-                    help='gradient clipping')
-parser.add_argument('--epochs', type=int, default=8000,
-                    help='upper epoch limit')
-parser.add_argument('--batch_size', type=int, default=80, metavar='N',
-                    help='batch size')
-parser.add_argument('--bptt', type=int, default=70,
-                    help='sequence length')
-parser.add_argument('--dropout', type=float, default=0.4,
-                    help='dropout applied to layers (0 = no dropout)')
-parser.add_argument('--dropouth', type=float, default=0.3,
-                    help='dropout for rnn layers (0 = no dropout)')
-parser.add_argument('--dropouti', type=float, default=0.65,
-                    help='dropout for input embedding layers (0 = no dropout)')
-parser.add_argument('--dropoute', type=float, default=0.1,
-                    help='dropout to remove words from embedding layer (0 = no dropout)')
-parser.add_argument('--wdrop', type=float, default=0.5,
-                    help='amount of weight dropout to apply to the RNN hidden to hidden matrix')
-parser.add_argument('--tied', action='store_false',
-                    help='tie the word embedding and softmax weights')
-parser.add_argument('--seed', type=int, default=1111,
-                    help='random seed')
-parser.add_argument('--nonmono', type=int, default=5,
-                    help='random seed')
-parser.add_argument('--cuda', action='store_false',
-                    help='use CUDA')
-parser.add_argument('--log-interval', type=int, default=200, metavar='N',
-                    help='report interval')
-randomhash = ''.join(str(time.time()).split('.'))
-parser.add_argument('--save', type=str,  default='RCP_ori_LSTM.pt',
-                    help='path to save the final model')
-parser.add_argument('--save_type', type=str,  default='RCP_type_LSTM.pt',
-                    help='path to save the final model')
-parser.add_argument('--alpha', type=float, default=2,
-                    help='alpha L2 regularization on RNN activation (alpha = 0 means no regularization)')
-parser.add_argument('--beta', type=float, default=1,
-                    help='beta slowness regularization applied on RNN activiation (beta = 0 means no regularization)')
-parser.add_argument('--wdecay', type=float, default=1.2e-6,
-                    help='weight decay applied to all weights')
-args = parser.parse_args()
 
-# Set the random seed manually for reproducibility.
-np.random.seed(args.seed)
+print(args)
 torch.manual_seed(args.seed)
 if torch.cuda.is_available():
     if not args.cuda:
-        print("WARNING: You have a CUDA device, so you should probably run with --cuda")
+        print('='*90, "\nWARNING: You have a CUDA device, so you should probably run with --cuda\n", '='*89)
     else:
-        torch.cuda.manual_seed(args.seed)
-
-###############################################################################
-# Load data
-###############################################################################
-
-corpus = data.Corpus(args.data)
-
-eval_batch_size = 10
-test_batch_size = 1
-train_data = batchify(corpus.train, args.batch_size, args)
-val_data = batchify(corpus.valid, eval_batch_size, args)
-test_data = batchify(corpus.test, test_batch_size, args)
-
-
-
-corpus2 = data.Corpus(args.data_type)
-
-train_data2 = batchify(corpus2.train, args.batch_size, args)
-val_data2 = batchify(corpus2.valid, eval_batch_size, args)
-test_data2 = batchify(corpus2.test, test_batch_size, args)
+    	#torch.cuda.set_device(2)
+    	torch.cuda.manual_seed(args.seed)
 
 
 ###############################################################################
-# Build the model
+# Load var data
 ###############################################################################
 
-ntokens = len(corpus.dictionary)
-model = model_file.RNNModel(args.model, ntokens, args.emsize, args.nhid, args.nlayers, args.dropout, args.dropouth, args.dropouti, args.dropoute, args.wdrop, args.tied)
+#### fix this
+# corpus = data.Corpus(args.data)
+corpus = data.Corpus(args)
+print('Train set size = ', len(corpus.train_data), len(corpus.train_label))
+print('Test set size = ', len(corpus.test_data), len(corpus.test_label))
+print('Vocabulary size = ', len(corpus.dictionary))
+
+
+train_var_data_trimed, train_var_label_trimed = util.batchify(corpus.train_data, corpus.train_label, args.batch_size, args.cuda) #[82915, 20] batch size = 20, it's kinda seq len in gen sense
+valid_var_data_trimed, valid_var_label_trimed = util.batchify(corpus.valid_data, corpus.valid_label, args.batch_size, args.cuda) #[82915, 20] batch size = 20, it's kinda seq len in gen sense 
+test_var_data_trimed, test_var_label_trimed = util.batchify(corpus.test_data, corpus.test_label, args.batch_size, args.cuda) #[82915, 20] batch size = 20, it's kinda seq len in gen sense
+
+
+###############################################################################
+# Load type data
+###############################################################################
+
+
+args.train_data = args.train_data.rstrip('.data')+'_type.data'
+args.valid_data = args.valid_data.rstrip('test.data')+'test_type.data'
+args.test_data = args.test_data.rstrip('test.data')+'test_type.data'
+
+corpus_type = data.Corpus(args)
+print('Train set size = ', len(corpus_type.train_data), len(corpus_type.train_label))
+print('Test set size = ', len(corpus_type.test_data), len(corpus_type.test_label))
+print('Vocabulary size = ', len(corpus_type.dictionary))
+train_type_data_trimed, train_type_label_trimed = util.batchify(corpus_type.train_data, corpus_type.train_label, args.batch_size, args.cuda) #[82915, 20] batch size = 20, it's kinda seq len in gen sense
+valid_type_data_trimed, valid_type_label_trimed = util.batchify(corpus_type.valid_data, corpus_type.valid_label, args.batch_size, args.cuda) #[82915, 20] batch size = 20, it's kinda seq len in gen sense 
+test_type_data_trimed, test_type_label_trimed = util.batchify(corpus_type.test_data, corpus_type.test_label, args.batch_size, args.cuda) #[82915, 20] batch size = 20, it's kinda seq len in gen sense
+
+
+if args.debug:
+
+	# train_data_trimed = train_data_trimed[:50]
+    # valid_data_trimed = valid_data_trimed[:50]
+    # test_data_trimed = test_data_trimed[:50]
+
+    # train_label_trimed = train_label_trimed[:50]
+    # valid_label_trimed = valid_label_trimed[:50]
+    # test_label_trimed = test_label_trimed[:50]
+    test_var_data_trimed = test_var_data_trimed[:50]
+    test_var_label_trimed = test_var_label_trimed[:50]
+    test_type_data_trimed = test_type_data_trimed[:50]
+    test_type_label_trimed = test_type_label_trimed[:50]
+
+assert len(train_type_data_trimed) == len(train_type_label_trimed)
+assert len(valid_type_data_trimed) == len(valid_type_label_trimed)
+assert len(test_type_data_trimed) == len(test_type_label_trimed)
+
+assert len(train_var_data_trimed) == len(train_var_label_trimed)
+assert len(valid_var_data_trimed) == len(valid_var_label_trimed)
+assert len(test_var_data_trimed) == len(test_var_label_trimed)
+
+# assert len(train_var_data_trimed) == len(train_type_label_trimed)
+# assert len(valid_var_data_trimed) == len(valid_type_label_trimed)
+assert len(test_var_data_trimed) == len(test_type_label_trimed)
+
+
+
+# print (batchify([2,3,4,3,4,355,4,342,90], 2))
+print('train_batches: size: ', len(train_var_data_trimed) ) #, 'seq len: ', len(train_data_trimed[0]), '1st instance: ', train_data_trimed[0][:50], '1st label: ', train_label_trimed[0][:50] )# , train_batches[0][0].sentence1)
+
+
+# # ###############################################################################
+# # # Build the model
+# # ###############################################################################
+
+model_f = model_rnd.LanguageModel(corpus.dictionary, args)
+model_b = model_rnd.LanguageModel(corpus.dictionary, args)
+
 if args.cuda:
-    model.cuda()
-total_params = sum(x.size()[0] * x.size()[1] if len(x.size()) > 1 else x.size()[0] for x in model.parameters())
-print('Args:', args)
-print('Model total parameters:', total_params)
+    torch.cuda.set_device(args.gpu)
+    model_f.cuda()
+    model_b.cuda()
 
 
-ntokens2 = len(corpus2.dictionary)
-model2 = model_file.RNNModel(args.model, ntokens2, args.emsize, args.nhid, args.nlayers, args.dropout, args.dropouth, args.dropouti, args.dropoute, args.wdrop, args.tied)
+
+criterion = nn.CrossEntropyLoss(size_average=True)
+
+# ###############################################################################
+# # testing code
+# ###############################################################################
+
+
+f_f = 'forward_model_best.pth.tar'
+b_f = 'backward_model_best.pth.tar'
+
+if os.path.isfile(os.path.join(args.log_dir, f_f)) and os.path.isfile(os.path.join(args.log_dir, b_f)):
+    print("=> Starting loading  best models for testing: from ", os.path.join(args.log_dir, f_f), ' and ', os.path.join(args.log_dir, b_f) )
+    checkpoint_forward= torch.load(os.path.join(args.log_dir, f_f))
+    checkpoint_backward= torch.load(os.path.join(args.log_dir, b_f))
+    args.start_epoch = checkpoint_forward['epoch']
+    best_perplexity_forward = checkpoint_forward['perplexity']
+    best_perplexity_backward = checkpoint_backward['perplexity']
+    model_f.load_state_dict(checkpoint_forward['state_dict'])
+    model_b.load_state_dict(checkpoint_backward['state_dict'])
+    print("=> Finished loading  best models for testing")
+
+
+
+model_tf = model_rnd.LanguageModel(corpus_type.dictionary, args)
+model_tb = model_rnd.LanguageModel(corpus_type.dictionary, args)
 if args.cuda:
-    model2.cuda()
-total_params = sum(x.size()[0] * x.size()[1] if len(x.size()) > 1 else x.size()[0] for x in model2.parameters())
-print('Model total parameters:', total_params)
+    torch.cuda.set_device(args.gpu)
+    model_tf.cuda()
+    model_tb.cuda()
+f_f = 'forward_model_best.pth.tar'
+b_f = 'backward_model_best.pth.tar'
 
-
-
-criterion = nn.CrossEntropyLoss()
-
-###############################################################################
-# Testing code
-###############################################################################
-
-def evaluate(data_source, batch_size=10):
-    # Turn on evaluation mode which disables dropout.
-    model.eval()
-    if args.model == 'QRNN': model.reset()
-    total_loss = 0
-    ntokens = len(corpus.dictionary)
-    hidden = model.init_hidden(batch_size)
-    for i in range(0, data_source.size(0) - 1, args.bptt):
-        data, targets = get_batch(data_source, i, args, evaluation=True)
-        output, hidden = model(data, hidden)
-        output_flat = output.view(-1, ntokens)
-        total_loss += len(data) * criterion(output_flat, targets).data
-        hidden = repackage_hidden(hidden)
-    return total_loss[0] / len(data_source)
-
-def evaluate2(data_source, batch_size=10):
-    # Turn on evaluation mode which disables dropout.
-    model2.eval()
-    if args.model == 'QRNN': model2.reset()
-    total_loss = 0
-    ntokens2 = len(corpus2.dictionary)
-    hidden = model2.init_hidden(batch_size)
-    for i in range(0, data_source.size(0) - 1, args.bptt):
-        data, targets = get_batch(data_source, i, args, evaluation=True)
-        output, hidden = model2(data, hidden)
-        output_flat = output.view(-1, ntokens2)
-        total_loss += len(data) * criterion(output_flat, targets).data
-        hidden = repackage_hidden(hidden)
-    return total_loss[0] / len(data_source)
+if os.path.isfile(os.path.join(args.log_type_dir, f_f)) and os.path.isfile(os.path.join(args.log_type_dir, b_f)):
+    print("=> Starting loading  best models for testing: from ", os.path.join(args.log_type_dir, f_f), ' and ', os.path.join(args.log_type_dir, b_f) )
+    checkpoint_forward= torch.load(os.path.join(args.log_type_dir, f_f))
+    checkpoint_backward= torch.load(os.path.join(args.log_type_dir, b_f))
+    args.start_epoch = checkpoint_forward['epoch']
+    best_perplexity_forward_type= checkpoint_forward['perplexity']
+    best_perplexity_backward_type = checkpoint_backward['perplexity']
+    model_tf.load_state_dict(checkpoint_forward['state_dict'])
+    model_tb.load_state_dict(checkpoint_backward['state_dict'])
+    print("=> Finished loading  best models for testing")
 
 
 def get_symbol_table(data, types):
-	# print('in sym table')
-
-	# print ({i[0]: types.data[0] for i in data.data})
-	# data = data.data
-	# types = types.data
+	# print(data, " \n types: ", types)
+	data = data.data[0]
+	types = types.data[0]
 	# print(data, " \n types: ", types)
 	id_map ={}
 	i = 0
-	# for pos, tp in zip(data.data, types.data):
-	# 	id_map.update({pos[0]:tp[0]})
-	for pos, tp in zip(data, types):
-		id_map.update({pos.data[0]:tp.data[0]})
-
-	# print ('symbol table:::')
-	# print (id_map)
+	for i  in range(len(data)):
+		pos = data[i]
+		tp = types[i]
+		id_map.update({pos:tp})
 	return id_map
 
 
-def evaluate_both(data_source, data_source2, batch_size=10):
-    # Turn on evaluation mode which disables dropout.
-    model2.eval()
-    model.eval()
-    if args.model == 'QRNN': 
-    	model2.reset()
-    	model.reset()
-    total_loss = 0
-    total_loss2 = 0
-    total_loss_cb = 0
 
-
-    ntokens2 = len(corpus2.dictionary)
-    ntokens = len(corpus.dictionary)
-    hidden = model.init_hidden(batch_size)
-    hidden2 = model2.init_hidden(batch_size)
-    for i in range(0, data_source.size(0) - 1, args.bptt):
-        data, targets = get_batch(data_source, i, args, evaluation=True)
-        data2, targets2 = get_batch(data_source2, i, args, evaluation=True)
-
-
-        output2, hidden2 = model2(data2, hidden2)
-        output, hidden = model(data, hidden)
-
-        output_flat2 = output2.view(-1, ntokens2)
-        output_flat = output.view(-1, ntokens)
-
-     #    m = nn.Softmax()
-    	# output_flat_f = m(output_flat)
-    	# output_flat_tf = m(output_flat2)
-    	# print ('data.data:' ,data.data, [corpus.dictionary.idx2word[i[0]] for i in data.data])
-    	# print ('targets.data:' ,targets)
-    	# print ([corpus.dictionary.idx2word[i.data[0]] for i in targets])
-    	# candidates = set([corpus.dictionary.idx2word[i.data[0]] for i in targets])
-    	# candidates_ids = set([i.data[0] for i in targets])
-
-    	# candidates_type = set([corpus2.dictionary.idx2word[i.data[0]] for i in targets2])
-    	# candidates_ids_type = set([i.data[0] for i in targets2])
-
-    	# print ('data2.data:' ,data2.data, [corpus2.dictionary.idx2word[i[0]] for i in data2.data])
-    	numwords = output_flat.size()[0]
-    	# print ('numwords to predict: ', numwords)
-    	# symbol_table = get_symbol_table(data, data2)
-    	symbol_table = get_symbol_table(targets, targets2)
-    	output_flat_cb= output_flat.clone()
-
-    	# print ('two words: ',corpus.dictionary.idx2word[data.data[0][0]], corpus.dictionary.idx2word[data.data[1][0]])
-    	# print( ' target: ', corpus.dictionary.idx2word[targets[0].data[0]], corpus.dictionary.idx2word[targets[1].data[0]])
-    	# print ('total # word to pred: ', len(data), len(targets), numwords)
-    	for idxx in range(numwords):
-    		# print (idxx, "'th prediction: ", 'word: ', corpus.dictionary.idx2word[data.data[idxx][0]], 'target: ', corpus.dictionary.idx2word[targets[idxx].data[0]])
-    		# print (candidates, len(candidates))
-    		for pos in targets: #for all candidates
-    			
-    			pos = pos.data[0]
-    			# print  ('cand id : ', pos)
-    			# print ('word: ', corpus.dictionary.idx2word[pos])
-
-    			# print  ('cand type id by loop from targets2: ', tp)
-    			# print ('word: ', corpus.dictionary.idx2word[tp])
-    			tp = symbol_table[pos]
-    			# print  ('cand type id by symbol table: ', tp)
-    			# print ('type word: ', corpus2.dictionary.idx2word[tp])
-    			
-    			# print ('prob for candidate : ', corpus.dictionary.idx2word[pos], ' is: ', output_flat_cb.data[idxx][pos], ' map to type: ', corpus2.dictionary.idx2word[tp], ' with prob: ', output_flat2.data[idxx][tp] )
-    			output_flat_cb.data[idxx][pos] += output_flat2.data[idxx][tp]
-    	
-
-# 
-        total_loss += len(data) * criterion(output_flat, targets).data
-        total_loss2 += len(data2) * criterion(output_flat2, targets2).data
-        total_loss_cb += len(data2) * criterion(output_flat_cb, targets).data
-
-        # print (' soccer: ', len(data) * criterion(output_flat, targets).data), ' my: ',  len(data) * criterion(output_flat_f, targets).data
-
-
-        hidden = repackage_hidden(hidden)
-        hidden2 = repackage_hidden(hidden2)
-
-    return total_loss[0] / len(data_source), total_loss2[0] / len(data_source2), total_loss_cb[0] / len(data_source)
-
-
-
-def infer(valid_data_trimed, valid_type_data_trimed, forward_model,  forward_type_model, var_dict, type_dict, criterion, eval_batch_size):
+def infer(valid_data_trimed, valid_label_trimed, valid_type_data_trimed, valid_type_label_trimed, forward_model, backward_model,  forward_type_model, backward_type_model, var_dict, type_dict, criterion):
         # Turn on evaluation mode which disables dropout.
         forward_model.eval()
-       
+        backward_model.eval()
         forward_type_model.eval()
-        
+        backward_type_model.eval()
 
         total_mean_loss_f = 0
-        total_mean_loss_tf = 0
+        total_mean_loss_b = 0
         total_mean_loss_cb = 0
-        
+        total_mean_loss_tf = 0
+        total_mean_loss_tb = 0
+        total_mean_loss = 0
+        total_mean_lossc = 0
+        total_mean_losst = 0
 
         ntokens = len(var_dict)
         type_ntokens = len(type_dict)
+        eval_batch_size = args.batch_size #// 2
+    
+         
+        for batch, i in enumerate(range(0, len(valid_data_trimed), eval_batch_size)):
+            data_f, targets_f = util.get_minibatch(valid_data_trimed, valid_label_trimed, i, eval_batch_size, var_dict.padding_id, 'forward', evaluation=True)
+            data_b, targets_b = util.get_minibatch(valid_data_trimed, valid_label_trimed, i, eval_batch_size, var_dict.padding_id, 'backward', evaluation=True)
 
 
-        for batch, i in enumerate  (range(0, valid_data_trimed.size(0) - 1, args.bptt)):
-        	data_f, targets_f = get_batch(valid_data_trimed, i, args, evaluation=True)
-        	data_tf, targets_tf = get_batch(valid_type_data_trimed, i, args, evaluation=True)
-        	#mask = data.ne(dictionary.padding_id)
-        	hidden_f = forward_model.init_hidden(eval_batch_size)
-        	hidden_tf = forward_type_model.init_hidden(eval_batch_size) #for each sentence need to initialize
 
-        	output_f, hidden_f = forward_model(data_f, hidden_f)
-        	output_tf, hidden_tf = forward_type_model(data_tf, hidden_tf)
-
-        	output_flat_f = output_f.view(-1, ntokens)
-        	output_flat_tf = output_tf.view(-1, type_ntokens) # (batch x seq) x ntokens 
-
-        	m = nn.Softmax()
-        	output_flat_f = m(output_flat_f)
-        	output_flat_tf = m(output_flat_tf)
+            data_tf, targets_tf = util.get_minibatch(valid_type_data_trimed, valid_type_label_trimed, i, eval_batch_size, type_dict.padding_id, 'forward', evaluation=True)
+            data_tb, targets_tb = util.get_minibatch(valid_type_data_trimed, valid_type_label_trimed, i, eval_batch_size, type_dict.padding_id, 'backward', evaluation=True)
 
 
-        	numwords = output_flat_f.size()[0]
-        	symbol_table = get_symbol_table(data_f, data_tf)
-        	# print(symbol_table)
-        	output_flat_cb= output_flat_f.clone()#torch.FloatTensor(output_flat_b.size()).zero_()#copy[:]
-        	# print(output_flat_cb[0])
-        	# make_symbol_table()
 
-        	for idxx in range(numwords):
-        		for pos in set(data_f.data[0]): 
-        			tp = symbol_table[pos]
-        			output_flat_cb.data[idxx][pos] += output_flat_tf.data[idxx][tp]
+            #mask = data.ne(dictionary.padding_id)
+            hidden_f = forward_model.init_hidden(eval_batch_size) #for each sentence need to initialize
+            hidden_b = backward_model.init_hidden(eval_batch_size) #for each sentence need to initialize
 
-        	loss_f = criterion(output_flat_f, targets_f)
-        	loss_tf = criterion(output_flat_tf, targets_tf)
-        	loss_cb =  nn.functional.nll_loss(torch.log(m(output_flat_cb)), targets_f, size_average=True)
+            hidden_f = util.repackage_hidden(hidden_f, args.cuda)
+            hidden_b = util.repackage_hidden(hidden_b, args.cuda)
 
 
-        	total_mean_loss_f += len(data_f) * loss_f.data
-        	total_mean_loss_cb += len(data_f) * loss_cb.data
-        	total_mean_loss_tf += len(data_f) * loss_tf.data
+            hidden_tf = forward_type_model.init_hidden(eval_batch_size) #for each sentence need to initialize
+            hidden_tb = backward_type_model.init_hidden(eval_batch_size) #for each sentence need to initialize
+
+            hidden_tf = util.repackage_hidden(hidden_tf, args.cuda)
+            hidden_tb = util.repackage_hidden(hidden_tb, args.cuda)
 
 
-        	if(batch%500==0): print ("done batch ", batch, ' of ', len(valid_data_trimed)/ eval_batch_size)
+
+            output_f, hidden_f = forward_model(data_f, hidden_f)
+            output_b, hidden_b = backward_model(data_b, hidden_b)
+
+            output_tf, hidden_tf = forward_type_model(data_tf, hidden_tf)
+            output_tb, hidden_tb = backward_type_model(data_tb, hidden_tb)
+
+
+
+            output_flat_f = output_f.view(-1, ntokens) # (batch x seq) x ntokens 
+            output_flat_b = output_b.view(-1, ntokens)
+
+
+            output_flat_tf = output_tf.view(-1, type_ntokens) # (batch x seq) x ntokens 
+            output_flat_tb = output_tb.view(-1, type_ntokens)
+
+
+
+            output_flat_f_t = output_flat_f
+            output_flat_b_t = output_flat_b
+
+            output_flat_tf_t = output_flat_tf
+            output_flat_tb_t = output_flat_tb
+
+
+            m = nn.Softmax()
+            output_flat_f = m(output_flat_f)
+            output_flat_b = m(output_flat_b)
+
+
+            output_flat_tf = m(output_flat_tf)
+            output_flat_tb = m(output_flat_tb)
+
+
+
+            x = 0.5
+            idx = torch.range(output_flat_b.size(0)-1, 0, -1).long()
+            idx = torch.autograd.Variable(idx)
+            if args.cuda:
+                idx = idx.cuda()
+            output_flat_b_flipped = output_flat_b.index_select(0, idx)
+            assert targets_f.size() == targets_b.size()
+            assert output_flat_f.size() == output_flat_b_flipped.size()
+            output = x*output_flat_f + (1-x)*output_flat_b_flipped
+            output_flat = output.view(-1, ntokens) 
+
+
+
+            tidx = torch.range(output_flat_tb.size(0)-1, 0, -1).long()
+            tidx = torch.autograd.Variable(tidx)
+            if args.cuda:
+                tidx = tidx.cuda()
+            output_flat_tb_flipped = output_flat_tb.index_select(0, tidx)
+            assert targets_tf.size() == targets_tb.size()
+            assert output_flat_tf.size() == output_flat_tb_flipped.size()
+            outputt = x*output_flat_tf + (1-x)*output_flat_tb_flipped
+            output_flatt = outputt.view(-1, type_ntokens) 
+
+            # if(i==0): 
+                # util.view_bidirection_calculation(output_flat_f, output_flat_b_flipped, output_flat, targets_f, self.dictionary, k = 5)
+
+            numwords = output_flat_b.size()[0]
+            symbol_table = get_symbol_table(data_b, data_tb)
+            # print(symbol_table)
+            output_flat_cb= output_flat_b_t.clone()#torch.FloatTensor(output_flat_b.size()).zero_()#copy[:]
+            # print(output_flat_cb[0])
+           	# make_symbol_table()
+  
+            for idxx in range(numwords): #for each of words at prediction time
+            	# print (" \n\n-----actual target word: ", var_dict.idx2word[targets_b.data[idxx]], '------')
+            	for pos in set(data_b.data[0]): #that means if the token is in the method or unknown for the method
+            		tp = symbol_table[pos]
+            		# print (" \n\n----- prediction word: ", var_dict.idx2word[pos], ' type: ', type_dict.idx2word[tp]),'------'
+            		# print (" backward prob of type ", output_flat_tb_t.data[idxx][tp], "\n before chnaging var back prob was: ", output_flat_cb.data[idxx][pos], ' ori: ', output_flat_b_t.data[idxx][pos])
+            		output_flat_cb.data[idxx][pos] += output_flat_tb_t.data[idxx][tp]
+            		# print(" var backward prob ", output_flat_b_t[idxx][pos], ' after softmax ', output_flat_b[idxx][pos] ,' now it is: ', output_flat_cb.data[idxx][pos])
+            	# exit()
+            # 		print(' target type : ', targets_tb[0])
+            # 	exit()
+            		# output_flat_cb.data[idxx][pos] +=  output_flat_b_t.data[idxx][pos]
+            # exit()	
+            # print('output_flat_b[0]: ', output_flat_b[0][8])
+            # print('output_flat_cb[0]: ', output_flat_cb[0][8])
+            # exit()
+            # output_flat_cb = Variable(output_flat_cb)
+            # if(args.cuda): output_flat_cb = output_flat_cb.cuda()
+
+
+            loss_f = criterion(output_flat_f_t, targets_f)
+            loss_b = criterion(output_flat_b_t, targets_b)
+
+
+
+            loss_tf = criterion(output_flat_tf_t, targets_tf)
+            loss_tb = criterion(output_flat_tb_t, targets_tb)
+
+
+            loss = nn.functional.nll_loss(torch.log(output_flat), targets_f, size_average=True)
+
+            losst = nn.functional.nll_loss(torch.log(output_flatt), targets_tf, size_average=True)
+
+            loss_cb =  nn.functional.nll_loss(torch.log(m(output_flat_cb)), targets_b, size_average=True)
+
+            assert loss_cb[0]>0
+            assert loss_cb[0]>loss_b[0]
+
+            # print ('loss_b: ',loss_b.data[0])
+            # print ('loss_cb: ',loss_cb.data[0])
+
+            mean_loss_f = loss_f #torch.mean(torch.masked_select(loss.data, mask))
+            mean_loss_b = loss_b #torch.mean(torch.masked_select(loss.data, mask))
+            mean_loss = loss
+
+            mean_loss_cb = loss_cb
+
+
+            mean_loss_tf = loss_tf #torch.mean(torch.masked_select(loss.data, mask))
+            mean_loss_tb = loss_tb #torch.mean(torch.masked_select(loss.data, mask))
+            mean_losst = losst
+
+
+
+
+            total_mean_loss_f += mean_loss_f.data
+            total_mean_loss_b += mean_loss_b.data
+            total_mean_loss += mean_loss.data
+
+            total_mean_loss_cb +=mean_loss_cb.data
+
+            total_mean_loss_tf += mean_loss_tf.data
+            total_mean_loss_tb += mean_loss_tb.data
+            total_mean_losst += mean_losst.data
+
+
+            
+            if(batch%500==0): print ("done batch ", batch, ' of ', len(valid_data_trimed)/ eval_batch_size)
 
         batch +=1 #starts counting from 0 hence total num batch (after finishing) = batch + 1
+        forward_model.train()
+        backward_model.train()
+        forward_type_model.train()
+        backward_type_model.train()
 
-        avg_loss_f = total_mean_loss_f[0]/valid_data_trimed.size(0)
-        avg_loss_cb = total_mean_loss_cb[0]/valid_data_trimed.size(0)
-        avg_loss_tf = total_mean_loss_tf[0]/valid_data_trimed.size(0)
+
+
+        avg_loss_f = total_mean_loss_f[0]/batch
+        avg_loss_b = total_mean_loss_b[0]/batch
+        avg_loss = total_mean_loss[0]/batch
+        avg_loss_cb = total_mean_loss_cb[0]/batch
+
+
+        avg_loss_tf = total_mean_loss_tf[0]/batch
+        avg_loss_tb = total_mean_loss_tb[0]/batch
+        avg_losst = total_mean_losst[0]/batch
 
 
 
         ppl_f = math.exp(avg_loss_f)
+        ppl_b = math.exp(avg_loss_b)
         ppl_cb = math.exp(avg_loss_cb)
+        ppl = math.exp(avg_loss)
+
+
         ppl_tf = math.exp(avg_loss_tf)
+        ppl_tb = math.exp(avg_loss_tb)
+        pplt = math.exp(avg_losst)
 
 
 
              
         print('Var model direction {} avg loss: {:.2f}  ppl: {:.2f} '.format(  'forward', avg_loss_f, ppl_f))
-        print('Type model direction {} avg loss: {:.2f}  ppl: {:.2f} '.format(  'combined ', avg_loss_cb, ppl_cb))
+        print('Var model direction {} avg loss: {:.2f}  ppl: {:.2f} '.format(  'backward', avg_loss_b, ppl_b))
+        print('Var model direction {} avg loss: {:.2f}  ppl: {:.2f} '.format(  'bidirectional', avg_loss, ppl))
+
+        print('Type model direction {} avg loss: {:.2f}  ppl: {:.2f} '.format(  'combined backward', avg_loss_cb, ppl_cb))
+
         print('Type model direction {} avg loss: {:.2f}  ppl: {:.2f} '.format(  'forward', avg_loss_tf, ppl_tf))
-        
-
-           
-           
+        print('Type model direction {} avg loss: {:.2f}  ppl: {:.2f} '.format( 'backward', avg_loss_tb, ppl_tb))
+        print('Type model direction {} avg loss: {:.2f}  ppl: {:.2f} '.format(  'bidirectional', avg_losst, pplt))
 
 
 
 
+        #combined inference of the backward models as they are the best models in both cases
+        # output_flat_tf (batch x seq) x ntokens 
 
 
 
 
 
 
-# Load the best saved model.
-with open(args.save, 'rb') as f:
-    # model = torch.load(f)
-    model.load_state_dict(torch.load(f))
-with open(args.save_type, 'rb') as f:
-    # model = torch.load(f)
-    model2.load_state_dict(torch.load(f))
-
-# Run on test data.
-# test_loss = evaluate(test_data[:args.debug], test_batch_size)
-# print('=' * 89)
-# print('| End of var training | test loss {:5.2f} | test ppl {:8.2f}'.format(
-#     test_loss, math.exp(test_loss)))
-# print('=' * 89)
-
-
-
-# test_loss = evaluate2(test_data2[:args.debug], test_batch_size)
-# print('=' * 89)
-# print('| End of type training | test loss {:5.2f} | test ppl {:8.2f}'.format(
-#     test_loss, math.exp(test_loss)))
-# print('=' * 89)
-
-test_loss, test_loss2, test_loss_cb = evaluate_both(test_data[:args.debug], test_data2[:args.debug], test_batch_size)
-print('=' * 189)
-print('| End of training | test var loss {:5.2f} | test var ppl {:8.2f} | test type loss {:5.2f} | test type ppl {:8.2f} | test cb loss {:5.2f} | test cb ppl {:8.2f}'.format(
-    test_loss, math.exp(test_loss), test_loss2, math.exp(test_loss2),  test_loss_cb, math.exp(test_loss_cb) ))
-print('=' * 189)
-
-
-
-# infer(test_data[:args.debug], test_data2[:args.debug], model, model2, corpus.dictionary, corpus2.dictionary, criterion, test_batch_size)
+infer(test_var_data_trimed, test_var_label_trimed, test_type_data_trimed, test_type_label_trimed, model_f, model_b, model_tf, model_tb, corpus.dictionary, corpus_type.dictionary, criterion)
      
+
+
 

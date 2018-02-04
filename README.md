@@ -1,3 +1,5 @@
+## Experiemnts: python3 main.py (do not use --cuda)
+
 The task is to predict the next token based on the context what we have seen so far
 
 initial corpus: a sentence is a method:

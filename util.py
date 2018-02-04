@@ -34,7 +34,8 @@ def get_args():
                         help='number of hidden units per layer')
     parser.add_argument('--nlayers', type=int, default=1,
                         help='number of layers')
-    parser.add_argument('--lr', type=float, default=0.0001,
+     # parser.add_argument('--lr', type=float, default=0.0001,
+    parser.add_argument('--lr', type=float, default=1e-4,
                         help='initial learning rate')
     parser.add_argument('--lr_decay', type=float, default=.5,
                         help='decay ratio for learning rate')
@@ -46,20 +47,31 @@ def get_args():
     parser.add_argument('--epochs', type=int, default=1,
                         help='upper limit of epoch')
 #### fix this
-    parser.add_argument('--train_data', type=str, default='train_var.data',
+    parser.add_argument('--train_data', type=str, default='all_train.data',
                         help='train_corpus path')
-    parser.add_argument('--valid_data', type=str, default='valid_var.data',
+    parser.add_argument('--valid_data', type=str, default='new_test.data',
                         help='valid_corpus path')
-    parser.add_argument('--test_data', type=str, default='test_var.data',
+    parser.add_argument('--test_data', type=str, default='new_test.data',
                         help='test_corpus path')
+
+    parser.add_argument('--train_data_type', type=str, default='all_train_type.data',
+                        help='train_corpus path')
+    parser.add_argument('--valid_data_type', type=str, default='new_test_type.data',
+                        help='valid_corpus path')
+    parser.add_argument('--test_data_type', type=str, default='new_test_type.data',
+                        help='test_corpus path')
+
     parser.add_argument('--debug_mode', action='store_true',
+                        help='are you debugging your code?')
+    parser.add_argument('--debug', action='store_true',
                         help='are you debugging your code?')
 #### fix this
     parser.add_argument('--batch_size', type=int, default=1, metavar='N',
                         help='batch size')
     parser.add_argument('--bptt', type=int, default=35,
                         help='sequence length')
-    parser.add_argument('--dropout', type=float, default=0.2,
+    # parser.add_argument('--dropout', type=float, default=0.2,
+    parser.add_argument('--dropout', type=float, default=0.3,
                         help='dropout applied to layers (0 = no dropout)')
     parser.add_argument('--tied', action='store_true',
                         help='tie the word embedding and softmax weights')
@@ -105,14 +117,25 @@ def get_args():
     parser.add_argument('--data_path', default='./soft_data/')
     parser.add_argument('--log-interval', type=int, default=200, metavar='N',
                         help='report interval')
-    parser.add_argument('--save', type=str, default='model.pt',
+    parser.add_argument('--save', type=str, default='model_ori_with_type.pt',
                         help='path to save the final model')
     parser.add_argument('--resume', action='store_true',
                         help='Resume training or not')
     parser.add_argument('--log_dir', type=str, default='./log_adam')
     parser.add_argument('--start_epoch', type=int, default=0)
     parser.add_argument('--nepochs', type=int, default=1)
+    parser.add_argument('--type', action='store_true')
     args = parser.parse_args()
+    # args.log_type_dir = args.log_dir+'/ORI_WITH_TYPE'
+    if args.type :
+       args.log_dir += '/ORI_WITH_TYPE'
+       args.train_data = args.train_data.rstrip('.data')+'_type.data'
+       # print(args.valid_data)
+       # print(args.valid_data.rstrip('test.data'))
+       args.valid_data = args.valid_data.rstrip('test.data')+'test_type.data'
+       # print(args.valid_data)
+       args.test_data = args.test_data.rstrip('test.data')+'test_type.data'
+
     return args
 
 def save_object(obj, filename):
